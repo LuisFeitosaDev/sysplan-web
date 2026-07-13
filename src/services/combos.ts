@@ -29,11 +29,14 @@ export function useCombos() {
     },
   });
 
-  /** Opções de um tipo de combo para um grupo (cd_grupo=2 => combos gerais) */
-  const opcoes = (tipo: string, cdGrupo: number = GRUPO_GERAL): string[] =>
-    (query.data ?? [])
-      .filter((c) => c.dc_tipo_combo === tipo && c.cd_grupo === cdGrupo)
-      .map((c) => c.dc_combo);
+  /** Opções de um tipo de combo para um grupo (cd_grupo=2 => combos gerais), sem duplicados */
+  const opcoes = (tipo: string, cdGrupo: number = GRUPO_GERAL): string[] => [
+    ...new Set(
+      (query.data ?? [])
+        .filter((c) => c.dc_tipo_combo === tipo && c.cd_grupo === cdGrupo)
+        .map((c) => c.dc_combo),
+    ),
+  ];
 
   return { ...query, opcoes };
 }

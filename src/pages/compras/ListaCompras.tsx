@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Download,
   FileSpreadsheet,
   FileText,
   Filter,
+  Layers,
   Plus,
   RefreshCw,
   Trash2,
@@ -23,6 +24,7 @@ import { exportarCsv, exportarExcel, exportarPdf, type ColunaExport } from '@/li
 import { anoMes, formatNumber, formatPercent } from '@/lib/utils';
 import type { CompraLista, ConfigColuna } from '@/types';
 import { campoParaColuna, renderizador } from './colunas';
+import { CadastroMassa } from './CadastroMassa';
 import { EdicaoCompra } from './EdicaoCompra';
 import { EdicaoMassaCampo } from './EdicaoMassaCampo';
 import { FotoProduto } from './FotoProduto';
@@ -47,8 +49,10 @@ export default function ListaCompras() {
   const [filtrosAvancados, setFiltrosAvancados] = useState<FiltroAvancado[]>([]);
   const [dialogFiltros, setDialogFiltros] = useState(false);
   const [cdEdicao, setCdEdicao] = useState<number | null>(null);
+  const [cadastroMassa, setCadastroMassa] = useState(false);
   const [selecionadas, setSelecionadas] = useState<Set<number>>(new Set());
   const [fotoRef, setFotoRef] = useState<string | null>(null);
+  const ultimoClicado = useRef<number | null>(null);
 
   const { data: configCols } = useQuery({
     queryKey: ['prm_lista_compras'],
@@ -195,9 +199,14 @@ export default function ListaCompras() {
         </div>
         <div className="flex flex-wrap gap-2">
           {editavel && (
-            <Button onClick={() => setCdEdicao(0)}>
-              <Plus /> Novo Registro
-            </Button>
+            <>
+              <Button onClick={() => setCdEdicao(0)}>
+                <Plus /> Novo Registro
+              </Button>
+              <Button variant="secondary" onClick={() => setCadastroMassa(true)}>
+                <Layers /> Cadastro em Massa
+              </Button>
+            </>
           )}
           <Button variant="outline" onClick={() => setDialogFiltros(true)}>
             <Filter /> Filtros {filtrosAvancados.length > 0 && <Badge>{filtrosAvancados.length}</Badge>}
@@ -285,12 +294,24 @@ export default function ListaCompras() {
         carregando={isLoading}
         rowKey={(r) => r.cd_compra}
         selecionadas={selecionadas}
-        onRowClick={(row) => {
+        onRowClick={(row, e, visiveis) => {
           setFotoRef(row.cd_material_fornecedor);
           setSelecionadas((s) => {
             const n = new Set(s);
+            // Shift+clique: seleciona o intervalo entre o último clique e a linha atual
+            if (e.shiftKey && ultimoClicado.current != null) {
+              const i1 = visiveis.findIndex((v) => v.cd_compra === ultimoClicado.current);
+              const i2 = visiveis.findIndex((v) => v.cd_compra === row.cd_compra);
+              if (i1 >= 0 && i2 >= 0) {
+                for (let i = Math.min(i1, i2); i <= Math.max(i1, i2); i++) {
+                  n.add(visiveis[i].cd_compra);
+                }
+                return n;
+              }
+            }
             if (n.has(row.cd_compra)) n.delete(row.cd_compra);
             else n.add(row.cd_compra);
+            ultimoClicado.current = row.cd_compra;
             return n;
           });
         }}
@@ -376,6 +397,15 @@ export default function ListaCompras() {
           onFechar={(salvou) => {
             setCdEdicao(null);
             if (salvou) qc.invalidateQueries({ queryKey: ['compras_lista'] });
+          }}
+        />
+      )}
+
+      {cadastroMassa && (
+        <CadastroMassa
+          onFechar={(criou) => {
+            setCadastroMassa(false);
+            if (criou) qc.invalidateQueries({ queryKey: ['compras_lista'] });
           }}
         />
       )}

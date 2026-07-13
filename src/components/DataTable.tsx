@@ -19,7 +19,8 @@ interface DataTableProps<T> {
   carregando?: boolean;
   busca?: boolean;
   paginacao?: number;
-  onRowClick?: (row: T) => void;
+  /** Recebe também o evento e as linhas visíveis da página (para seleção por intervalo com Shift) */
+  onRowClick?: (row: T, event: React.MouseEvent, visiveis: T[]) => void;
   onRowDoubleClick?: (row: T) => void;
   selecionadas?: Set<number>;
   rowKey: (row: T) => number | string;
@@ -143,11 +144,11 @@ export function DataTable<T extends Record<string, any>>({
                     <tr
                       key={k}
                       className={cn(
-                        'border-b transition-colors hover:bg-accent/60',
+                        'border-b transition-colors hover:bg-accent/60 select-none',
                         (onRowClick || onRowDoubleClick) && 'cursor-pointer',
                         selecionadas?.has(k as number) && 'bg-primary/10',
                       )}
-                      onClick={() => onRowClick?.(row)}
+                      onClick={(e) => onRowClick?.(row, e, visiveis)}
                       onDoubleClick={() => onRowDoubleClick?.(row)}
                     >
                       {colunas.map((c) => (

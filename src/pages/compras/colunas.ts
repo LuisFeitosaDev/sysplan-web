@@ -3,6 +3,7 @@ import type { ConfigColuna } from '@/types';
 
 /** Mapeia o nome de campo legado (PRM_Lista_Compras) para a coluna da view */
 const MAPA_LEGADO: Record<string, string> = {
+  DC_SubGrupo: 'dc_subgrupo',
   NR_AnoMes: 'nr_anomes',
   NR_TotalFOB: 'nr_total_fob',
   Margem_Calc: 'margem_calc',
