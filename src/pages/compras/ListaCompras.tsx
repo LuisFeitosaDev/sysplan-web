@@ -27,7 +27,7 @@ import { campoParaColuna, renderizador } from './colunas';
 import { CadastroMassa } from './CadastroMassa';
 import { EdicaoCompra } from './EdicaoCompra';
 import { EdicaoMassaCampo } from './EdicaoMassaCampo';
-import { FotoProduto } from './FotoProduto';
+import { FotoCabecalho } from './FotoProduto';
 
 interface FiltroAvancado {
   campo: string;
@@ -53,6 +53,12 @@ export default function ListaCompras() {
   const [selecionadas, setSelecionadas] = useState<Set<number>>(new Set());
   const [fotoRef, setFotoRef] = useState<string | null>(null);
   const ultimoClicado = useRef<number | null>(null);
+  // Filtros rápidos em cascata (opções de um dependem dos demais)
+  const [fCanal, setFCanal] = useState('');
+  const [fGrupo, setFGrupo] = useState('');
+  const [fGriffe, setFGriffe] = useState('');
+  const [fMaterialPai, setFMaterialPai] = useState('');
+  const [fProcesso, setFProcesso] = useState('');
 
   const { data: configCols } = useQuery({
     queryKey: ['prm_lista_compras'],
@@ -91,7 +97,8 @@ export default function ListaCompras() {
     [compradores],
   );
 
-  const filtrados = useMemo(() => {
+  // Base com os filtros avançados aplicados (antes dos filtros rápidos)
+  const baseFiltrada = useMemo(() => {
     let r = compras ?? [];
     for (const f of filtrosAvancados) {
       if (!f.valor) continue;
@@ -113,6 +120,37 @@ export default function ListaCompras() {
     }
     return r;
   }, [compras, filtrosAvancados]);
+
+  const filtrosRapidos = { fCanal, fGrupo, fGriffe, fMaterialPai, fProcesso };
+
+  const aplicaRapidos = (dados: CompraLista[], ignorar?: keyof typeof filtrosRapidos) => {
+    let r = dados;
+    if (fCanal && ignorar !== 'fCanal') r = r.filter((x) => x.dc_canal === fCanal);
+    if (fGrupo && ignorar !== 'fGrupo') r = r.filter((x) => x.dc_grupo === fGrupo);
+    if (fGriffe && ignorar !== 'fGriffe') r = r.filter((x) => x.dc_griffe === fGriffe);
+    if (fMaterialPai && ignorar !== 'fMaterialPai') {
+      const v = fMaterialPai.toLowerCase();
+      r = r.filter((x) => (x.cd_material_pai ?? '').toLowerCase().includes(v));
+    }
+    if (fProcesso && ignorar !== 'fProcesso') {
+      const v = fProcesso.toLowerCase();
+      r = r.filter((x) => (x.cd_embarque ?? '').toLowerCase().includes(v));
+    }
+    return r;
+  };
+
+  const filtrados = useMemo(
+    () => aplicaRapidos(baseFiltrada),
+    [baseFiltrada, fCanal, fGrupo, fGriffe, fMaterialPai, fProcesso],
+  );
+
+  // Opções em cascata: cada combo lista os valores existentes considerando os OUTROS filtros
+  const opcoesRapidas = (campo: keyof CompraLista, ignorar: keyof typeof filtrosRapidos): string[] =>
+    [...new Set(aplicaRapidos(baseFiltrada, ignorar).map((x) => x[campo]).filter(Boolean))].sort() as string[];
+
+  const opcoesCanal = useMemo(() => opcoesRapidas('dc_canal', 'fCanal'), [baseFiltrada, fGrupo, fGriffe, fMaterialPai, fProcesso]);
+  const opcoesGrupo = useMemo(() => opcoesRapidas('dc_grupo', 'fGrupo'), [baseFiltrada, fCanal, fGriffe, fMaterialPai, fProcesso]);
+  const opcoesGriffe = useMemo(() => opcoesRapidas('dc_griffe', 'fGriffe'), [baseFiltrada, fCanal, fGrupo, fMaterialPai, fProcesso]);
 
   const colunas: Coluna<CompraLista>[] = useMemo(() => {
     const base: Coluna<CompraLista>[] = (configCols ?? []).map((c) => ({
@@ -193,9 +231,12 @@ export default function ListaCompras() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Lista de Compras</h1>
-          <p className="text-sm text-muted-foreground">Carteira de compras e importação</p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Lista de Compras</h1>
+            <p className="text-sm text-muted-foreground">Carteira de compras e importação</p>
+          </div>
+          <FotoCabecalho refFornecedor={fotoRef} />
         </div>
         <div className="flex flex-wrap gap-2">
           {editavel && (
@@ -236,9 +277,29 @@ export default function ListaCompras() {
             <Label>Grupo / Comprador</Label>
             <Select value={compradorGrupo} onChange={(e) => setCompradorGrupo(e.target.value)} placeholder="Todos" options={listaCompradorGrupos} />
           </div>
-          <div className="w-32">
+          <div className="w-28">
             <Label>AnoMês início</Label>
             <Input value={anoMesInicio} onChange={(e) => setAnoMesInicio(e.target.value.replace(/\D/g, ''))} />
+          </div>
+          <div className="w-36">
+            <Label>Canal</Label>
+            <Select value={fCanal} onChange={(e) => setFCanal(e.target.value)} placeholder="Todos" options={opcoesCanal} />
+          </div>
+          <div className="w-36">
+            <Label>Grupo</Label>
+            <Select value={fGrupo} onChange={(e) => setFGrupo(e.target.value)} placeholder="Todos" options={opcoesGrupo} />
+          </div>
+          <div className="w-40">
+            <Label>Griffe</Label>
+            <Select value={fGriffe} onChange={(e) => setFGriffe(e.target.value)} placeholder="Todas" options={opcoesGriffe} />
+          </div>
+          <div className="w-32">
+            <Label>Material Pai</Label>
+            <Input value={fMaterialPai} onChange={(e) => setFMaterialPai(e.target.value)} />
+          </div>
+          <div className="w-32">
+            <Label>Processo FUP</Label>
+            <Input value={fProcesso} onChange={(e) => setFProcesso(e.target.value)} />
           </div>
           <Button
             variant="ghost"
@@ -247,6 +308,11 @@ export default function ListaCompras() {
               setCompradorGrupo('');
               setAnoMesInicio(String(anoMes(-10)));
               setFiltrosAvancados([]);
+              setFCanal('');
+              setFGrupo('');
+              setFGriffe('');
+              setFMaterialPai('');
+              setFProcesso('');
             }}
           >
             Limpar filtros
@@ -254,6 +320,7 @@ export default function ListaCompras() {
           {selecionadas.size >= 2 && editavel && (
             <EdicaoMassaCampo
               selecionadas={selecionadas}
+              onLimparSelecao={() => setSelecionadas(new Set())}
               onAplicado={() => {
                 setSelecionadas(new Set());
                 qc.invalidateQueries({ queryKey: ['compras_lista'] });
@@ -324,7 +391,6 @@ export default function ListaCompras() {
         }
       />
 
-      <FotoProduto refFornecedor={fotoRef} />
 
       <Dialog open={dialogFiltros} onOpenChange={setDialogFiltros}>
         <DialogContent className="max-w-2xl">

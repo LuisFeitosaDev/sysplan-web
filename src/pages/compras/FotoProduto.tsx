@@ -1,18 +1,18 @@
 import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ImageOff, Upload } from 'lucide-react';
+import { ImageOff, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { buscarFotoProduto, salvarFotoProduto } from '@/lib/cloudinary';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 /**
  * Foto do produto por referência do fornecedor.
  * Fonte principal: banco de imagens (Cloudinary, mapeado em fotos_produto);
  * fallback: bucket legado do Supabase Storage.
  */
-function useFotoProduto(refFornecedor: string | null) {
+export function useFotoProduto(refFornecedor: string | null) {
   return useQuery({
     queryKey: ['foto_produto', refFornecedor],
     enabled: !!refFornecedor,
@@ -25,16 +25,26 @@ function useFotoProduto(refFornecedor: string | null) {
   });
 }
 
-function Imagem({ url, refFornecedor, altura }: { url: string | null | undefined; refFornecedor: string; altura: number }) {
+export function Imagem({
+  url,
+  refFornecedor,
+  altura,
+  className,
+}: {
+  url: string | null | undefined;
+  refFornecedor: string;
+  altura: number;
+  className?: string;
+}) {
   const [erro, setErro] = useState(false);
   if (!url || erro) {
     return (
       <div
-        className="flex w-full flex-col items-center justify-center gap-1 rounded-md border text-muted-foreground"
+        className={cn('flex w-full flex-col items-center justify-center gap-1 rounded-md border text-muted-foreground', className)}
         style={{ height: altura }}
       >
-        <ImageOff className="h-6 w-6" />
-        <span className="text-xs">Sem foto</span>
+        <ImageOff className="h-5 w-5" />
+        <span className="text-[10px]">Sem foto</span>
       </div>
     );
   }
@@ -43,7 +53,7 @@ function Imagem({ url, refFornecedor, altura }: { url: string | null | undefined
       key={url}
       src={url}
       alt={refFornecedor}
-      className="w-full rounded-md border object-contain"
+      className={cn('w-full rounded-md border object-contain', className)}
       style={{ maxHeight: altura }}
       onError={() => setErro(true)}
     />
@@ -63,6 +73,9 @@ export function FotoInline({
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [enviando, setEnviando] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
+
+  const temFoto = !!url;
 
   const enviar = async (file: File) => {
     if (!refFornecedor) {
@@ -72,7 +85,7 @@ export function FotoInline({
     setEnviando(true);
     try {
       await salvarFotoProduto(refFornecedor, file);
-      toast.success('Foto enviada ao banco de imagens.');
+      toast.success('Foto salva no banco de imagens.');
       qc.invalidateQueries({ queryKey: ['foto_produto', refFornecedor] });
     } catch (e: any) {
       toast.error(e.message ?? String(e));
@@ -81,21 +94,51 @@ export function FotoInline({
     }
   };
 
+  const excluir = async () => {
+    if (!refFornecedor) return;
+    if (!confirm('Excluir a foto deste produto?')) return;
+    setExcluindo(true);
+    try {
+      const { error } = await supabase.from('fotos_produto').delete().eq('cd_ref_fornecedor', refFornecedor);
+      if (error) throw error;
+      // remove também eventual foto legada do bucket (ignora falha)
+      await supabase.storage.from('fotos-produto').remove([`${refFornecedor}.jpg`]).catch(() => {});
+      toast.success('Foto excluída.');
+      qc.invalidateQueries({ queryKey: ['foto_produto', refFornecedor] });
+    } catch (e: any) {
+      toast.error(e.message ?? String(e));
+    } finally {
+      setExcluindo(false);
+    }
+  };
+
   return (
     <div className="space-y-1">
       <Imagem url={url} refFornecedor={refFornecedor ?? ''} altura={altura} />
       {permitirUpload && (
-        <>
+        <div className="flex gap-1">
           <Button
             variant="outline"
             size="sm"
-            className="h-6 w-full text-xs"
+            className="h-6 flex-1 text-xs"
             loading={enviando}
             disabled={!refFornecedor}
             onClick={() => fileRef.current?.click()}
           >
-            <Upload className="h-3 w-3" /> Enviar foto
+            <Upload className="h-3 w-3" /> {temFoto ? 'Substituir' : 'Incluir foto'}
           </Button>
+          {temFoto && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 text-xs text-destructive"
+              loading={excluindo}
+              onClick={excluir}
+              title="Excluir foto"
+            >
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          )}
           <input
             ref={fileRef}
             type="file"
@@ -107,21 +150,22 @@ export function FotoInline({
               e.target.value = '';
             }}
           />
-        </>
+        </div>
       )}
     </div>
   );
 }
 
-export function FotoProduto({ refFornecedor }: { refFornecedor: string | null }) {
+/** Miniatura para o cabeçalho da lista (linha selecionada) */
+export function FotoCabecalho({ refFornecedor }: { refFornecedor: string | null }) {
   const { data: url } = useFotoProduto(refFornecedor);
   if (!refFornecedor) return null;
   return (
-    <Card className="fixed bottom-4 right-4 z-40 w-44 shadow-lg">
-      <CardContent className="p-2">
-        <Imagem url={url} refFornecedor={refFornecedor} altura={144} />
-        <p className="mt-1 truncate text-center text-xs text-muted-foreground">{refFornecedor}</p>
-      </CardContent>
-    </Card>
+    <div className="flex items-center gap-2 rounded-md border bg-card px-2 py-1 shadow-sm">
+      <Imagem url={url} refFornecedor={refFornecedor} altura={56} className="w-20" />
+      <span className="max-w-28 truncate text-xs text-muted-foreground" title={refFornecedor}>
+        {refFornecedor}
+      </span>
+    </div>
   );
 }

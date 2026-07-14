@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { PencilRuler } from 'lucide-react';
+import { PencilRuler, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -47,9 +47,11 @@ const CAMPOS: CampoMassa[] = [
 export function EdicaoMassaCampo({
   selecionadas,
   onAplicado,
+  onLimparSelecao,
 }: {
   selecionadas: Set<number>;
   onAplicado: () => void;
+  onLimparSelecao: () => void;
 }) {
   const { registraLog } = useAuth();
   const { opcoes } = useCombos();
@@ -116,6 +118,15 @@ export function EdicaoMassaCampo({
         if (confirm(`Aplicar "${def.label}" em ${selecionadas.size} linha(s)?`)) aplicar.mutate();
       }}>
         Aplicar
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        title="Limpar seleção (desmarcar todas as linhas)"
+        onClick={onLimparSelecao}
+      >
+        <X />
       </Button>
     </div>
   );

@@ -27,11 +27,19 @@ export function campoParaColuna(campo: string): string {
     .toLowerCase();
 }
 
+/** Campos numéricos exibidos como inteiro (sem casas decimais) */
+const CAMPOS_INTEIROS = new Set(['NR_Quantidade', 'NR_LeadTime', 'CD_Compra', 'CD_Essential']);
+/** Campos exibidos como número puro, sem separador de milhar (códigos) */
+const CAMPOS_CODIGO = new Set(['NR_AnoMes']);
+
 export function renderizador(config: ConfigColuna): ((row: any) => string) | undefined {
   const col = campoParaColuna(config.campo);
   if (config.tipo_dado === 'Data') return (row) => formatDate(row[col]);
   if (config.campo === 'Margem_Calc' || config.campo === 'NR_Margem')
     return (row) => formatPercent(row[col]);
+  if (CAMPOS_CODIGO.has(config.campo))
+    return (row) => (row[col] == null ? '' : String(Math.trunc(Number(row[col]))));
+  if (CAMPOS_INTEIROS.has(config.campo)) return (row) => formatNumber(row[col], 0);
   if (config.tipo_dado === 'Numero') return (row) => formatNumber(row[col], 2);
   return undefined;
 }
