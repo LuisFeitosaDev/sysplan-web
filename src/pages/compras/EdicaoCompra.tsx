@@ -380,7 +380,7 @@ export function EdicaoCompra({
           {/* Coluna 4: foto e cores */}
           <div className="space-y-2">
             <Bloco titulo="Foto" cor="cinza">
-              <FotoInline refFornecedor={form.cd_material_fornecedor ?? null} altura={190} />
+              <FotoInline refFornecedor={form.cd_material_fornecedor ?? null} altura={170} permitirUpload />
               <p className="truncate text-center text-[10px] text-muted-foreground">{form.cd_material_fornecedor}</p>
             </Bloco>
             <Bloco titulo="Cores (Pedido SAP)" cor="cinza">

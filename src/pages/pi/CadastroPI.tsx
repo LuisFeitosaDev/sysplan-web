@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { GRUPO_GERAL, useCombos, useEssentials, useGrupos } from '@/services/combos';
 import { parsePI, extrairFotoPI, traduzCoresPI, type DadosPI } from '@/lib/pi-parser';
+import { salvarFotoProduto } from '@/lib/cloudinary';
 import { validaCompra } from '@/lib/regras';
 import { Button } from '@/components/ui/button';
 import { Input, Label, Select, Textarea } from '@/components/ui/input';
@@ -189,7 +190,8 @@ export default function CadastroPI() {
         .eq('cd_compra', compra.cd_compra);
       if (error) throw error;
 
-      // Storage: arquivo da PI e foto do produto
+      // Arquivo da PI fica no Supabase Storage; a foto do produto sobe para o
+      // banco de imagens (Cloudinary) e é mapeada pela Ref. Fornecedor.
       const nomeBase = `${usuario?.nome ?? 'user'} - ${hojeISO().replace(/-/g, '')} - ${arquivo?.name ?? 'pi.xlsx'}`;
       let pathArquivo: string | null = null;
       let pathFoto: string | null = null;
@@ -198,8 +200,7 @@ export default function CadastroPI() {
         await supabase.storage.from('arquivos-pi').upload(pathArquivo, arquivo, { upsert: true });
       }
       if (foto && compra.cd_material_fornecedor) {
-        pathFoto = `${compra.cd_material_fornecedor}.jpg`;
-        await supabase.storage.from('fotos-produto').upload(pathFoto, foto, { upsert: true, contentType: foto.type });
+        pathFoto = await salvarFotoProduto(compra.cd_material_fornecedor, foto);
       }
 
       // Histórico em pasta_pi + cores
