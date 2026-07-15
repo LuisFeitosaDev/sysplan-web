@@ -53,6 +53,7 @@ const MENUS: { grupo: string; itens: ItemMenu[] }[] = [
     itens: [
       { para: '/controle-importacao', tela: 'controle_importacao', nome: 'Controle de Importação', icone: Container },
       { para: '/acompanhamento-importacoes', tela: 'acompanhamento_importacoes', nome: 'Acompanhamento Importações', icone: Ship },
+      { para: '/lancar-acompanhamento', tela: 'lancar_acompanhamento', nome: 'Lançar no Acompanhamento', icone: Upload },
       { para: '/multiplos-embarques', tela: 'multiplos_embarques', nome: 'Múltiplos Embarques', icone: Boxes },
       { para: '/checks-recebimento', tela: 'checks_recebimento', nome: 'Checks de Recebimento', icone: ListChecks },
     ],

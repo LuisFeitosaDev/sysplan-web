@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileDown, PlayCircle, RefreshCw, Save } from 'lucide-react';
+import { FileDown, PencilRuler, Plus, RefreshCw, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -8,16 +8,16 @@ import { DataTable, type Coluna } from '@/components/DataTable';
 import { Button } from '@/components/ui/button';
 import { Input, Label, Select, Textarea } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/misc';
 import { exportarExcel } from '@/lib/exportar';
 import { formatDate, formatNumber } from '@/lib/utils';
 
 /**
- * Acompanhamento de Importações — substitui a planilha do despachante (Hoffen).
- * O planejamento gera as pendências a partir do Controle de Compras; o despachante
- * preenche ID de origem, datas de embarque/atraque, HBL, navio, contêiner e observações.
- * O status é calculado automaticamente e alimenta a consolidação FUP do sistema.
+ * Acompanhamento de Importações — controle do despachante dentro do sistema.
+ * A alimentação em lote é feita pela tela "Lançar no Acompanhamento" (permissão própria);
+ * aqui o responsável edita os embarques (individual ou em massa) e pode inserir
+ * um registro avulso quando algo fugir do fluxo.
  */
 
 const CORES_STATUS: Record<string, 'success' | 'secondary' | 'destructive' | 'default' | 'outline'> = {
@@ -31,10 +31,30 @@ const CORES_STATUS: Record<string, 'success' | 'secondary' | 'destructive' | 'de
 
 const STATUS_OPCOES = Object.keys(CORES_STATUS);
 
+/** Campos editáveis em massa pelo despachante */
+const CAMPOS_MASSA: { campo: string; label: string; tipo: 'texto' | 'data' }[] = [
+  { campo: 'cd_embarque', label: 'Processo (Cod)', tipo: 'texto' },
+  { campo: 'id_origem', label: 'ID Origem', tipo: 'texto' },
+  { campo: 'dt_entrega_origem_real', label: 'Entrega Origem Real', tipo: 'data' },
+  { campo: 'dt_etd', label: 'ETD (prev. embarque)', tipo: 'data' },
+  { campo: 'dt_atd', label: 'ATD (embarque real)', tipo: 'data' },
+  { campo: 'dt_eta', label: 'ETA (prev. atraque)', tipo: 'data' },
+  { campo: 'dt_ata', label: 'ATA (atraque real)', tipo: 'data' },
+  { campo: 'hbl', label: 'HBL', tipo: 'texto' },
+  { campo: 'vessel', label: 'Navio (Vessel)', tipo: 'texto' },
+  { campo: 'ctnr', label: 'Contêiner', tipo: 'texto' },
+  { campo: 'dc_observacoes', label: 'Observações', tipo: 'texto' },
+];
+
+const NOVO_REGISTRO = {
+  dc_grupo: '', dc_canal: '', dc_fornecedor: '', cd_material_pai: '',
+  cd_pedido_fornecedor: '', cd_pedido_sap: '', nr_quantidade: 0,
+  dc_modal: '', dt_delivery: '', dt_recebimento: '',
+};
+
 export default function AcompanhamentoImportacoes() {
   const { podeEditar, registraLog } = useAuth();
   const editavel = podeEditar('acompanhamento_importacoes');
-  const gerencia = podeEditar('controle_importacao');
   const qc = useQueryClient();
 
   const [status, setStatus] = useState('');
@@ -43,6 +63,11 @@ export default function AcompanhamentoImportacoes() {
   const [material, setMaterial] = useState('');
   const [embarque, setEmbarque] = useState('');
   const [edicao, setEdicao] = useState<any | null>(null);
+  const [novo, setNovo] = useState<typeof NOVO_REGISTRO | null>(null);
+  const [selecionadas, setSelecionadas] = useState<Set<number>>(new Set());
+  const ultimoClicado = useRef<number | null>(null);
+  const [campoMassa, setCampoMassa] = useState(CAMPOS_MASSA[0].campo);
+  const [valorMassa, setValorMassa] = useState('');
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['acompanhamento_importacoes'],
@@ -83,15 +108,24 @@ export default function AcompanhamentoImportacoes() {
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [data]);
 
-  const gerar = useMutation({
+  const defMassa = CAMPOS_MASSA.find((c) => c.campo === campoMassa)!;
+
+  const aplicarMassa = useMutation({
     mutationFn: async () => {
-      const { data: n, error } = await supabase.rpc('fn_gerar_acompanhamento_importacoes');
-      if (error) throw error;
-      return n as number;
+      const valor = defMassa.tipo === 'data' ? valorMassa || null : valorMassa;
+      for (const id of selecionadas) {
+        const { error } = await supabase
+          .from('acompanhamento_importacoes')
+          .update({ [campoMassa]: valor })
+          .eq('id', id);
+        if (error) throw new Error(`Linha ${id}: ${error.message}`);
+      }
+      registraLog('AcompImportacoes - Edicao em Massa', 0, '', `${selecionadas.size} linhas`, campoMassa);
     },
-    onSuccess: (n) => {
-      toast.success(`${n} pendência(s) gerada(s) a partir do Controle de Compras.`);
-      registraLog('AcompImportacoes - Gerar Pendencias', 0, '', String(n));
+    onSuccess: () => {
+      toast.success(`${defMassa.label} atualizado em ${selecionadas.size} linha(s).`);
+      setSelecionadas(new Set());
+      setValorMassa('');
       qc.invalidateQueries({ queryKey: ['acompanhamento_importacoes'] });
     },
     onError: (e: any) => toast.error(e.message ?? String(e)),
@@ -123,6 +157,29 @@ export default function AcompanhamentoImportacoes() {
     onSuccess: () => {
       toast.success('Acompanhamento atualizado.');
       setEdicao(null);
+      qc.invalidateQueries({ queryKey: ['acompanhamento_importacoes'] });
+    },
+    onError: (e: any) => toast.error(e.message ?? String(e)),
+  });
+
+  const inserir = useMutation({
+    mutationFn: async () => {
+      if (!novo) return;
+      if (!novo.cd_pedido_sap || !novo.cd_material_pai) {
+        throw new Error('Pedido SAP e Material Pai são obrigatórios.');
+      }
+      const { error } = await supabase.from('acompanhamento_importacoes').insert({
+        ...novo,
+        nr_quantidade: Number(novo.nr_quantidade) || 0,
+        dt_delivery: novo.dt_delivery || null,
+        dt_recebimento: novo.dt_recebimento || null,
+      });
+      if (error) throw error;
+      registraLog('AcompImportacoes - Insercao Manual', 0, '', `${novo.cd_pedido_sap} ${novo.cd_material_pai}`);
+    },
+    onSuccess: () => {
+      toast.success('Registro inserido no acompanhamento.');
+      setNovo(null);
       qc.invalidateQueries({ queryKey: ['acompanhamento_importacoes'] });
     },
     onError: (e: any) => toast.error(e.message ?? String(e)),
@@ -162,7 +219,7 @@ export default function AcompanhamentoImportacoes() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Acompanhamento de Importações</h1>
           <p className="text-sm text-muted-foreground">
-            Controle do despachante — preencha as informações de cada embarque (duplo clique na linha)
+            Duplo clique edita o embarque · clique seleciona (Shift para intervalo) para edição em massa
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -176,9 +233,9 @@ export default function AcompanhamentoImportacoes() {
           >
             <FileDown /> Excel
           </Button>
-          {gerencia && (
-            <Button variant="secondary" loading={gerar.isPending} onClick={() => gerar.mutate()}>
-              <PlayCircle /> Gerar pendências do Controle de Compras
+          {editavel && (
+            <Button onClick={() => setNovo({ ...NOVO_REGISTRO })}>
+              <Plus /> Inserir registro
             </Button>
           )}
         </div>
@@ -204,6 +261,45 @@ export default function AcompanhamentoImportacoes() {
           <div className="w-36"><Label>Pedido SAP</Label><Input value={pedido} onChange={(e) => setPedido(e.target.value)} /></div>
           <div className="w-36"><Label>Material Pai</Label><Input value={material} onChange={(e) => setMaterial(e.target.value)} /></div>
           <div className="w-36"><Label>Processo</Label><Input value={embarque} onChange={(e) => setEmbarque(e.target.value)} /></div>
+
+          {selecionadas.size >= 2 && editavel && (
+            <div className="ml-auto flex flex-wrap items-end gap-2 rounded-md border border-primary/40 bg-primary/5 p-2">
+              <div>
+                <Label className="flex items-center gap-1">
+                  <PencilRuler className="h-3 w-3" /> Edição em massa ({selecionadas.size} linhas)
+                </Label>
+                <div className="flex gap-2">
+                  <Select
+                    className="w-52"
+                    value={campoMassa}
+                    onChange={(e) => { setCampoMassa(e.target.value); setValorMassa(''); }}
+                  >
+                    {CAMPOS_MASSA.map((c) => (
+                      <option key={c.campo} value={c.campo}>{c.label}</option>
+                    ))}
+                  </Select>
+                  <Input
+                    className="w-44"
+                    type={defMassa.tipo === 'data' ? 'date' : 'text'}
+                    value={valorMassa}
+                    onChange={(e) => setValorMassa(e.target.value)}
+                  />
+                </div>
+              </div>
+              <Button
+                size="sm"
+                loading={aplicarMassa.isPending}
+                onClick={() => {
+                  if (confirm(`Aplicar "${defMassa.label}" em ${selecionadas.size} linha(s)?`)) aplicarMassa.mutate();
+                }}
+              >
+                Aplicar
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8" title="Limpar seleção" onClick={() => setSelecionadas(new Set())}>
+                <X />
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -212,6 +308,24 @@ export default function AcompanhamentoImportacoes() {
         dados={filtrados}
         carregando={isLoading}
         rowKey={(r) => r.id}
+        selecionadas={selecionadas}
+        onRowClick={(row, e, visiveis) => {
+          setSelecionadas((s) => {
+            const n = new Set(s);
+            if (e.shiftKey && ultimoClicado.current != null) {
+              const i1 = visiveis.findIndex((v) => v.id === ultimoClicado.current);
+              const i2 = visiveis.findIndex((v) => v.id === row.id);
+              if (i1 >= 0 && i2 >= 0) {
+                for (let i = Math.min(i1, i2); i <= Math.max(i1, i2); i++) n.add(visiveis[i].id);
+                return n;
+              }
+            }
+            if (n.has(row.id)) n.delete(row.id);
+            else n.add(row.id);
+            ultimoClicado.current = row.id;
+            return n;
+          });
+        }}
         onRowDoubleClick={(r) => editavel && setEdicao({ ...r })}
         paginacao={100}
       />
@@ -248,6 +362,35 @@ export default function AcompanhamentoImportacoes() {
             <DialogFooter>
               <Button variant="outline" onClick={() => setEdicao(null)}>Cancelar</Button>
               <Button loading={salvar.isPending} onClick={() => salvar.mutate()}><Save /> Salvar</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {novo && (
+        <Dialog open onOpenChange={(o) => !o && setNovo(null)}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Inserir registro avulso</DialogTitle>
+              <DialogDescription>
+                Para embarques fora do fluxo padrão. A alimentação em lote é feita pela tela "Lançar no Acompanhamento".
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+              <div><Label>Grupo</Label><Input value={novo.dc_grupo} onChange={(e) => setNovo({ ...novo, dc_grupo: e.target.value })} /></div>
+              <div><Label>Canal</Label><Input value={novo.dc_canal} onChange={(e) => setNovo({ ...novo, dc_canal: e.target.value })} /></div>
+              <div><Label>Fornecedor</Label><Input value={novo.dc_fornecedor} onChange={(e) => setNovo({ ...novo, dc_fornecedor: e.target.value })} /></div>
+              <div><Label>Material Pai *</Label><Input value={novo.cd_material_pai} onChange={(e) => setNovo({ ...novo, cd_material_pai: e.target.value })} /></div>
+              <div><Label>PI</Label><Input value={novo.cd_pedido_fornecedor} onChange={(e) => setNovo({ ...novo, cd_pedido_fornecedor: e.target.value })} /></div>
+              <div><Label>Pedido SAP *</Label><Input value={novo.cd_pedido_sap} onChange={(e) => setNovo({ ...novo, cd_pedido_sap: e.target.value })} /></div>
+              <div><Label>Quantidade</Label><Input type="number" value={novo.nr_quantidade} onChange={(e) => setNovo({ ...novo, nr_quantidade: Number(e.target.value) })} /></div>
+              <div><Label>Modal</Label><Input value={novo.dc_modal} onChange={(e) => setNovo({ ...novo, dc_modal: e.target.value })} /></div>
+              <div><Label>Delivery</Label><Input type="date" value={novo.dt_delivery} onChange={(e) => setNovo({ ...novo, dt_delivery: e.target.value })} /></div>
+              <div><Label>Recebimento</Label><Input type="date" value={novo.dt_recebimento} onChange={(e) => setNovo({ ...novo, dt_recebimento: e.target.value })} /></div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setNovo(null)}>Cancelar</Button>
+              <Button loading={inserir.isPending} onClick={() => inserir.mutate()}>Inserir</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

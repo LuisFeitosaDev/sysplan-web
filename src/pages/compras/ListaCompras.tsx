@@ -148,6 +148,17 @@ export default function ListaCompras() {
   const opcoesRapidas = (campo: keyof CompraLista, ignorar: keyof typeof filtrosRapidos): string[] =>
     [...new Set(aplicaRapidos(baseFiltrada, ignorar).map((x) => x[campo]).filter(Boolean))].sort() as string[];
 
+  // Grupos distintos das linhas selecionadas (edição em massa exige grupo único)
+  const gruposSelecionados = useMemo(
+    () =>
+      [...new Set(
+        (compras ?? [])
+          .filter((c) => selecionadas.has(c.cd_compra))
+          .map((c) => c.dc_grupo ?? ''),
+      )],
+    [compras, selecionadas],
+  );
+
   const opcoesCanal = useMemo(() => opcoesRapidas('dc_canal', 'fCanal'), [baseFiltrada, fGrupo, fGriffe, fMaterialPai, fProcesso]);
   const opcoesGrupo = useMemo(() => opcoesRapidas('dc_grupo', 'fGrupo'), [baseFiltrada, fCanal, fGriffe, fMaterialPai, fProcesso]);
   const opcoesGriffe = useMemo(() => opcoesRapidas('dc_griffe', 'fGriffe'), [baseFiltrada, fCanal, fGrupo, fMaterialPai, fProcesso]);
@@ -320,6 +331,7 @@ export default function ListaCompras() {
           {selecionadas.size >= 2 && editavel && (
             <EdicaoMassaCampo
               selecionadas={selecionadas}
+              grupos={gruposSelecionados}
               onLimparSelecao={() => setSelecionadas(new Set())}
               onAplicado={() => {
                 setSelecionadas(new Set());

@@ -74,7 +74,37 @@ export interface Compra {
   cd_essential: number | null;
   dc_aprovacao_cor: string | null;
   nr_total_fob: number | null;
+  // Campos exclusivos de RELOGIOS / SMART WATCH
+  dc_tipo_pulseira: string | null;
+  dc_tipo_dial: string | null;
+  dc_numeros: string | null;
+  dc_num_maquina: string | null;
+  dc_acabamento_caixa: string | null;
+  dc_tipo_visor: string | null;
+  dc_montadora: string | null;
+  cd_codigo_compra: string | null;
+  cd_spare_parts: string | null;
+  dc_gaveta: string | null;
+  dc_nf_seculus: string | null;
 }
+
+/** Grupos que usam os campos exclusivos de relógio */
+export const GRUPOS_RELOGIO = ['RELOGIOS', 'RELOGIO', 'SMART WATCH'];
+
+/** Campos exclusivos de relógio: [coluna, rótulo] */
+export const CAMPOS_RELOGIO: [keyof Compra, string][] = [
+  ['dc_tipo_pulseira', 'Tipo Pulseira'],
+  ['dc_tipo_dial', 'Tipo Dial'],
+  ['dc_numeros', 'Números'],
+  ['dc_num_maquina', 'Num Máquina'],
+  ['dc_acabamento_caixa', 'Acab. Caixa'],
+  ['dc_tipo_visor', 'Tipo de Visor'],
+  ['dc_montadora', 'Montadora'],
+  ['cd_codigo_compra', 'Código Compra'],
+  ['cd_spare_parts', 'Spare Parts'],
+  ['dc_gaveta', 'Gaveta'],
+  ['dc_nf_seculus', 'NF Seculus'],
+];
 
 export interface CompraLista extends Compra {
   fob_calc: number | null;

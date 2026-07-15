@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ImageOff, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
@@ -37,6 +37,9 @@ export function Imagem({
   className?: string;
 }) {
   const [erro, setErro] = useState(false);
+  // sem isto, um erro de imagem anterior "trava" o componente e as fotos
+  // seguintes não aparecem (o estado de erro não era limpo ao trocar de linha)
+  useEffect(() => setErro(false), [url]);
   if (!url || erro) {
     return (
       <div

@@ -9,6 +9,7 @@ import FollowupFornecedor from '@/pages/followup/FollowupFornecedor';
 import CadastroPI from '@/pages/pi/CadastroPI';
 import ControleImportacao from '@/pages/comex/ControleImportacao';
 import AcompanhamentoImportacoes from '@/pages/comex/AcompanhamentoImportacoes';
+import LancarAcompanhamento from '@/pages/comex/LancarAcompanhamento';
 import MultiplosEmbarques from '@/pages/comex/MultiplosEmbarques';
 import ChecksRecebimento from '@/pages/comex/ChecksRecebimento';
 import CadastroPDV from '@/pages/pdv/CadastroPDV';
@@ -63,6 +64,7 @@ export default function App() {
         <Route path="/cadastro-pi" element={<Protegida tela="cadastro_pi"><CadastroPI /></Protegida>} />
         <Route path="/controle-importacao" element={<Protegida tela="controle_importacao"><ControleImportacao /></Protegida>} />
         <Route path="/acompanhamento-importacoes" element={<Protegida tela="acompanhamento_importacoes"><AcompanhamentoImportacoes /></Protegida>} />
+        <Route path="/lancar-acompanhamento" element={<Protegida tela="lancar_acompanhamento"><LancarAcompanhamento /></Protegida>} />
         <Route path="/multiplos-embarques" element={<Protegida tela="multiplos_embarques"><MultiplosEmbarques /></Protegida>} />
         <Route path="/checks-recebimento" element={<Protegida tela="checks_recebimento"><ChecksRecebimento /></Protegida>} />
         <Route path="/cadastro-pdv" element={<Protegida tela="cadastro_pdv"><CadastroPDV /></Protegida>} />

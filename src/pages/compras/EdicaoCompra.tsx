@@ -11,7 +11,7 @@ import { Input, Label, Select, Textarea } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/misc';
 import { formatDate, formatNumber, formatPercent } from '@/lib/utils';
-import type { Compra } from '@/types';
+import { GRUPOS_RELOGIO, type Compra } from '@/types';
 import { Bloco, CampoLinha, CTRL } from './Bloco';
 import { FotoInline } from './FotoProduto';
 
@@ -330,26 +330,72 @@ export function EdicaoCompra({
               <Texto campo="cd_pedido_sap" label="Pedido SAP" />
               <Texto campo="cd_material_pai" label="Material Pai" />
             </Bloco>
-            <Bloco titulo="Infos" cor="rosa">
-              {infos.map((lbl, i) => {
-                const campo = `dc_info${i + 1}` as keyof Compra;
-                return i < 4 ? (
-                  <CampoLinha key={campo} label={lbl}>
-                    <Select
-                      className={CTRL}
-                      value={(form[campo] as string) ?? ''}
-                      onChange={(e) => set(campo, e.target.value)}
-                      placeholder=""
-                      options={opcoes(`INFO ${i + 1}`, cdGrupo)}
-                    />
-                  </CampoLinha>
-                ) : (
-                  <CampoLinha key={campo} label={lbl}>
-                    <Input className={CTRL} value={(form[campo] as string) ?? ''} onChange={(e) => set(campo, e.target.value)} />
-                  </CampoLinha>
-                );
-              })}
-            </Bloco>
+            {GRUPOS_RELOGIO.includes(form.dc_grupo ?? '') ? (
+              <Bloco titulo="Relógios" cor="rosa">
+                {/* Tipo Pulseira — combo TIPO PULSEIRA */}
+                <CampoLinha label="Tipo Pulseira">
+                  <Select className={CTRL} value={form.dc_tipo_pulseira ?? ''} onChange={(e) => set('dc_tipo_pulseira', e.target.value)} placeholder="" options={opcoes('TIPO PULSEIRA', cdGrupo)} />
+                </CampoLinha>
+                {/* Tipo Dial — combo TIPO DIAL */}
+                <CampoLinha label="Tipo Dial">
+                  <Select className={CTRL} value={form.dc_tipo_dial ?? ''} onChange={(e) => set('dc_tipo_dial', e.target.value)} placeholder="" options={opcoes('TIPO DIAL', cdGrupo)} />
+                </CampoLinha>
+                {/* Números — combo NUMEROS */}
+                <CampoLinha label="Números">
+                  <Select className={CTRL} value={form.dc_numeros ?? ''} onChange={(e) => set('dc_numeros', e.target.value)} placeholder="" options={opcoes('NUMEROS', cdGrupo)} />
+                </CampoLinha>
+                {/* Num Máquina — combo NUM MAQUINA */}
+                <CampoLinha label="Num Máquina">
+                  <Select className={CTRL} value={form.dc_num_maquina ?? ''} onChange={(e) => set('dc_num_maquina', e.target.value)} placeholder="" options={opcoes('NUM MAQUINA', cdGrupo)} />
+                </CampoLinha>
+                {/* Acabamento Caixa — combo ACABAMENTO CAIXA */}
+                <CampoLinha label="Acab. Caixa">
+                  <Select className={CTRL} value={form.dc_acabamento_caixa ?? ''} onChange={(e) => set('dc_acabamento_caixa', e.target.value)} placeholder="" options={opcoes('ACABAMENTO CAIXA', cdGrupo)} />
+                </CampoLinha>
+                {/* Tipo de Visor — combo TIPO VISOR */}
+                <CampoLinha label="Tipo de Visor">
+                  <Select className={CTRL} value={form.dc_tipo_visor ?? ''} onChange={(e) => set('dc_tipo_visor', e.target.value)} placeholder="" options={opcoes('TIPO VISOR', cdGrupo)} />
+                </CampoLinha>
+                {/* Montadora — combo MONTADORA */}
+                <CampoLinha label="Montadora">
+                  <Select className={CTRL} value={form.dc_montadora ?? ''} onChange={(e) => set('dc_montadora', e.target.value)} placeholder="" options={opcoes('MONTADORA', cdGrupo)} />
+                </CampoLinha>
+                {/* Campos livres */}
+                <CampoLinha label="Código Compra">
+                  <Input className={CTRL} value={form.cd_codigo_compra ?? ''} onChange={(e) => set('cd_codigo_compra', e.target.value)} />
+                </CampoLinha>
+                <CampoLinha label="Spare Parts">
+                  <Input className={CTRL} value={form.cd_spare_parts ?? ''} onChange={(e) => set('cd_spare_parts', e.target.value)} />
+                </CampoLinha>
+                <CampoLinha label="Gaveta">
+                  <Input className={CTRL} value={form.dc_gaveta ?? ''} onChange={(e) => set('dc_gaveta', e.target.value)} />
+                </CampoLinha>
+                <CampoLinha label="NF Seculus">
+                  <Input className={CTRL} value={form.dc_nf_seculus ?? ''} onChange={(e) => set('dc_nf_seculus', e.target.value)} />
+                </CampoLinha>
+              </Bloco>
+            ) : (
+              <Bloco titulo="Infos" cor="rosa">
+                {infos.map((lbl, i) => {
+                  const campo = `dc_info${i + 1}` as keyof Compra;
+                  return i < 4 ? (
+                    <CampoLinha key={campo} label={lbl}>
+                      <Select
+                        className={CTRL}
+                        value={(form[campo] as string) ?? ''}
+                        onChange={(e) => set(campo, e.target.value)}
+                        placeholder=""
+                        options={opcoes(`INFO ${i + 1}`, cdGrupo)}
+                      />
+                    </CampoLinha>
+                  ) : (
+                    <CampoLinha key={campo} label={lbl}>
+                      <Input className={CTRL} value={(form[campo] as string) ?? ''} onChange={(e) => set(campo, e.target.value)} />
+                    </CampoLinha>
+                  );
+                })}
+              </Bloco>
+            )}
           </div>
 
           {/* Coluna 3 */}
