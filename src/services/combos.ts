@@ -20,12 +20,20 @@ export function useCombos() {
   const query = useQuery({
     queryKey: ['prm_combos'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('prm_combos')
-        .select('*')
-        .order('dc_combo');
-      if (error) throw error;
-      return data as Combo[];
+      const combos: Combo[] = [];
+      let offset = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from('prm_combos')
+          .select('*')
+          .order('dc_combo')
+          .range(offset, offset + 999);
+        if (error) throw error;
+        combos.push(...(data ?? []));
+        if (!data || data.length < 1000) break;
+        offset += 1000;
+      }
+      return combos;
     },
   });
 

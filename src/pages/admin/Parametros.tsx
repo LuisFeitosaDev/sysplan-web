@@ -164,6 +164,11 @@ function CrudTabela({ def }: { def: TabelaDef }) {
       toast.success('Salvo.');
       setEdicao(null);
       qc.invalidateQueries({ queryKey: ['prm', def.tabela] });
+      // Também invalida o cache usado pelas telas operacionais (useCombos,
+      // useGrupos, useCompradores), que guardam os dados sob o nome puro
+      // da tabela em vez do prefixo 'prm'. Sem isso, mudanças feitas aqui
+      // no Admin não aparecem em Compras até o cache expirar sozinho.
+      qc.invalidateQueries({ queryKey: [def.tabela] });
     },
     onError: (e: any) => toast.error(e.message ?? String(e)),
   });
@@ -179,6 +184,7 @@ function CrudTabela({ def }: { def: TabelaDef }) {
     onSuccess: () => {
       toast.success('Excluído.');
       qc.invalidateQueries({ queryKey: ['prm', def.tabela] });
+      qc.invalidateQueries({ queryKey: [def.tabela] });
     },
     onError: (e: any) => toast.error(e.message ?? String(e)),
   });
