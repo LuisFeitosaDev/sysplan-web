@@ -26,12 +26,19 @@ export function useCombos() {
         const { data, error } = await supabase
           .from('prm_combos')
           .select('*')
-          .order('dc_combo')
+          .order('dc_combo', { ascending: true })
+          .order('cd_combo', { ascending: true })
           .range(offset, offset + 999);
         if (error) throw error;
-        combos.push(...(data ?? []));
-        if (!data || data.length < 1000) break;
-        offset += 1000;
+        if (!data || data.length === 0) break;
+        combos.push(...data);
+        // Avança pelo tamanho REAL da página recebida, não pelos 1000 pedidos.
+        // Se o projeto Supabase tiver um limite de linhas por requisição
+        // (Project Settings → API → Max Rows) menor que 1000, cada página
+        // pode vir incompleta mesmo havendo mais dados depois. Usar um valor
+        // fixo aqui fazia o loop parar cedo demais e perder tudo que vinha
+        // depois em ordem alfabética (ex.: "TESTE", "VERMELHA").
+        offset += data.length;
       }
       return combos;
     },
