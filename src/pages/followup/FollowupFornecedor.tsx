@@ -9,6 +9,7 @@ import { useCombos, useCompradores } from '@/services/combos';
 import { DataTable, type Coluna } from '@/components/DataTable';
 import { Button } from '@/components/ui/button';
 import { Input, Label, Select } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatDate } from '@/lib/utils';
 import { baixarBlob, gerarArquivoFollowup, type LinhaFollowExport } from '@/lib/followup-excel';
@@ -461,11 +462,11 @@ export default function FollowupFornecedor() {
           </div>
           <div className="w-36">
             <Label>PI</Label>
-            <Input value={pi} onChange={(e) => setPi(e.target.value)} />
+            <SearchInput value={pi} onChange={(e) => setPi(e.target.value)} onClear={() => setPi('')} />
           </div>
           <div className="w-36">
             <Label>Material Pai</Label>
-            <Input value={materialPai} onChange={(e) => setMaterialPai(e.target.value)} />
+            <SearchInput value={materialPai} onChange={(e) => setMaterialPai(e.target.value)} onClear={() => setMaterialPai('')} />
           </div>
         </CardContent>
       </Card>

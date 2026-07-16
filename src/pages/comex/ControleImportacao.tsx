@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { DataTable, type Coluna } from '@/components/DataTable';
 import { Button } from '@/components/ui/button';
 import { Input, Label, Select } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/misc';
 import { exportarExcel } from '@/lib/exportar';
@@ -144,8 +145,8 @@ export default function ControleImportacao() {
       <Card>
         <CardContent className="flex flex-wrap items-end gap-3 p-3">
           <div className="w-36"><Label>Canal</Label><Select value={canal} onChange={(e) => setCanal(e.target.value)} placeholder="Todos" options={opcoes('CANAL')} /></div>
-          <div className="w-36"><Label>Grupo</Label><Input value={grupo} onChange={(e) => setGrupo(e.target.value)} /></div>
-          <div className="w-36"><Label>Griffe</Label><Input value={griffe} onChange={(e) => setGriffe(e.target.value)} /></div>
+         <div className="w-36"><Label>Grupo</Label><SearchInput value={grupo} onChange={(e) => setGrupo(e.target.value)} onClear={() => setGrupo('')} /></div>
+         <div className="w-36"><Label>Griffe</Label><SearchInput value={griffe} onChange={(e) => setGriffe(e.target.value)} onClear={() => setGriffe('')} /></div>
           <div className="w-28"><Label>Rec. início</Label><Input value={inicioRec} onChange={(e) => setInicioRec(e.target.value.replace(/\D/g, ''))} /></div>
           <div className="w-28"><Label>Rec. fim</Label><Input value={fimRec} onChange={(e) => setFimRec(e.target.value.replace(/\D/g, ''))} /></div>
           <div className="ml-auto flex items-end gap-2">

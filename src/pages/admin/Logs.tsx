@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { DataTable, type Coluna } from '@/components/DataTable';
 import { Button } from '@/components/ui/button';
 import { Input, Label, Select } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Card, CardContent } from '@/components/ui/card';
 import { exportarExcel } from '@/lib/exportar';
 import { formatDateTime } from '@/lib/utils';
@@ -81,7 +82,7 @@ export default function AdminLogs() {
           </div>
           <div className="w-32">
             <Label>Item (CD)</Label>
-            <Input value={item} onChange={(e) => setItem(e.target.value.replace(/\D/g, ''))} />
+            <SearchInput value={item} onChange={(e) => setItem(e.target.value.replace(/\D/g, ''))} onClear={() => setItem('')} />
           </div>
           <div className="w-40">
             <Label>A partir de</Label>

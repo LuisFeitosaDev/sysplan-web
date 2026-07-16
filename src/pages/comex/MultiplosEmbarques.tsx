@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { DataTable, type Coluna } from '@/components/DataTable';
 import { Button } from '@/components/ui/button';
 import { Input, Label } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Card, CardContent } from '@/components/ui/card';
 import { exportarExcel } from '@/lib/exportar';
 import { formatDate, formatNumber } from '@/lib/utils';
@@ -119,7 +120,7 @@ export default function MultiplosEmbarques() {
             <div><Label>Embarque</Label><Input value={selecionada.cd_embarque ?? ''} disabled className="w-40" /></div>
             <div>
               <Label>Pedido SAP Ajustado</Label>
-              <Input value={pedidoAjuste} onChange={(e) => setPedidoAjuste(e.target.value)} className="w-48" />
+              <SearchInput value={pedidoAjuste} onChange={(e) => setPedidoAjuste(e.target.value)} onClear={() => setPedidoAjuste('')} className="w-48" />
             </div>
             <Button loading={salvar.isPending} onClick={() => salvar.mutate()}>
               <Save /> Salvar

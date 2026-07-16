@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { DataTable, type Coluna } from '@/components/DataTable';
 import { Button } from '@/components/ui/button';
 import { Input, Label, Select, Textarea } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/misc';
@@ -257,10 +258,10 @@ export default function AcompanhamentoImportacoes() {
             <Label>Status</Label>
             <Select value={status} onChange={(e) => setStatus(e.target.value)} placeholder="Todos" options={STATUS_OPCOES} />
           </div>
-          <div className="w-32"><Label>Grupo</Label><Input value={grupo} onChange={(e) => setGrupo(e.target.value)} /></div>
-          <div className="w-36"><Label>Pedido SAP</Label><Input value={pedido} onChange={(e) => setPedido(e.target.value)} /></div>
-          <div className="w-36"><Label>Material Pai</Label><Input value={material} onChange={(e) => setMaterial(e.target.value)} /></div>
-          <div className="w-36"><Label>Processo</Label><Input value={embarque} onChange={(e) => setEmbarque(e.target.value)} /></div>
+          <div className="w-32"><Label>Grupo</Label><SearchInput value={grupo} onChange={(e) => setGrupo(e.target.value)} onClear={() => setGrupo('')} /></div>
+          <div className="w-36"><Label>Pedido SAP</Label><SearchInput value={pedido} onChange={(e) => setPedido(e.target.value)} onClear={() => setPedido('')} /></div>
+          <div className="w-36"><Label>Material Pai</Label><SearchInput value={material} onChange={(e) => setMaterial(e.target.value)} onClear={() => setMaterial('')} /></div>
+          <div className="w-36"><Label>Processo</Label><SearchInput value={embarque} onChange={(e) => setEmbarque(e.target.value)} onClear={() => setEmbarque('')} /></div>
 
           {selecionadas.size >= 2 && editavel && (
             <div className="ml-auto flex flex-wrap items-end gap-2 rounded-md border border-primary/40 bg-primary/5 p-2">

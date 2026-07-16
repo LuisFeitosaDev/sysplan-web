@@ -17,6 +17,7 @@ import { useCombos, useCompradores } from '@/services/combos';
 import { DataTable, type Coluna } from '@/components/DataTable';
 import { Button } from '@/components/ui/button';
 import { Input, Label, Select } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/misc';
@@ -44,8 +45,8 @@ export default function ListaCompras() {
   const filtroInicial = usuario?.filtro_comprador && usuario.filtro_comprador !== 'GERAL'
     ? usuario.filtro_comprador
     : '';
-  const [comprador, setComprador] = useState(filtroInicial);
-  const [compradorGrupo, setCompradorGrupo] = useState('');
+  const [fPO, setFPO] = useState(filtroInicial);
+  const [fPI, setFPI] = useState('');
   const [anoMesInicio, setAnoMesInicio] = useState(String(anoMes(-10)));
   const [filtrosAvancados, setFiltrosAvancados] = useState<FiltroAvancado[]>([]);
   const [dialogFiltros, setDialogFiltros] = useState(false);
@@ -60,6 +61,7 @@ export default function ListaCompras() {
   const [fGriffe, setFGriffe] = useState('');
   const [fMaterialPai, setFMaterialPai] = useState('');
   const [fProcesso, setFProcesso] = useState('');
+  const [fRefFornecedor, setFRefFornecedor] = useState('');
 
   const { data: configCols } = useQuery({
     queryKey: ['prm_lista_compras'],
@@ -75,13 +77,13 @@ export default function ListaCompras() {
   });
 
   const { data: compras, isLoading, refetch } = useQuery({
-    queryKey: ['compras_lista', comprador, compradorGrupo, anoMesInicio],
+    queryKey: ['compras_lista', fPO, fPI, anoMesInicio],
     queryFn: async () =>
       fetchAll<CompraLista>((inicio, fim) => {
         let q = supabase.from('vw_controle_compras_lista').select('*');
         if (anoMesInicio) q = q.gte('nr_anomes', Number(anoMesInicio));
-        if (comprador) q = q.eq('dc_comprador', comprador);
-        if (compradorGrupo) q = q.eq('dc_comprador_grupo', compradorGrupo);
+        if (fPO) q = q.eq('dc_comprador', fPO);
+        if (fPI) q = q.eq('dc_comprador_grupo', fPI);
         return q.order('dt_recebimento', { ascending: true }).order('cd_compra').range(inicio, fim);
       }),
   });
@@ -122,7 +124,7 @@ export default function ListaCompras() {
     return r;
   }, [compras, filtrosAvancados]);
 
-  const filtrosRapidos = { fCanal, fGrupo, fGriffe, fMaterialPai, fProcesso };
+  const filtrosRapidos = { fCanal, fGrupo, fGriffe, fMaterialPai, fProcesso, fRefFornecedor };
 
   const aplicaRapidos = (dados: CompraLista[], ignorar?: keyof typeof filtrosRapidos) => {
     let r = dados;
@@ -137,12 +139,16 @@ export default function ListaCompras() {
       const v = fProcesso.toLowerCase();
       r = r.filter((x) => (x.cd_embarque ?? '').toLowerCase().includes(v));
     }
+    if (fRefFornecedor && ignorar !== 'fRefFornecedor') {
+      const v = fRefFornecedor.toLowerCase();
+      r = r.filter((x) => (x.cd_material_fornecedor ?? '').toLowerCase().includes(v));
+    }
     return r;
   };
 
   const filtrados = useMemo(
     () => aplicaRapidos(baseFiltrada),
-    [baseFiltrada, fCanal, fGrupo, fGriffe, fMaterialPai, fProcesso],
+    [baseFiltrada, fCanal, fGrupo, fGriffe, fMaterialPai, fProcesso, fRefFornecedor],
   );
 
   // Opções em cascata: cada combo lista os valores existentes considerando os OUTROS filtros
@@ -333,12 +339,12 @@ export default function ListaCompras() {
       <Card>
         <CardContent className="flex flex-wrap items-end gap-3 p-3">
           <div className="w-44">
-            <Label>Comprador</Label>
-            <Select value={comprador} onChange={(e) => setComprador(e.target.value)} placeholder="Todos" options={listaCompradores} />
+            <Label>PO</Label>
+            <Select value={fPO} onChange={(e) => setFPO(e.target.value)} placeholder="Todos" options={listaCompradores} />
           </div>
           <div className="w-44">
-            <Label>Grupo / Comprador</Label>
-            <Select value={compradorGrupo} onChange={(e) => setCompradorGrupo(e.target.value)} placeholder="Todos" options={listaCompradorGrupos} />
+            <Label>PI</Label>
+            <Select value={fPI} onChange={(e) => setFPI(e.target.value)} placeholder="Todos" options={listaCompradorGrupos} />
           </div>
           <div className="w-28">
             <Label>AnoMês início</Label>
@@ -358,17 +364,21 @@ export default function ListaCompras() {
           </div>
           <div className="w-32">
             <Label>Material Pai</Label>
-            <Input value={fMaterialPai} onChange={(e) => setFMaterialPai(e.target.value)} />
+            <SearchInput value={fMaterialPai} onChange={(e) => setFMaterialPai(e.target.value)} onClear={() => setFMaterialPai('')} />
           </div>
           <div className="w-32">
             <Label>Processo FUP</Label>
-            <Input value={fProcesso} onChange={(e) => setFProcesso(e.target.value)} />
+            <SearchInput value={fProcesso} onChange={(e) => setFProcesso(e.target.value)} onClear={() => setFProcesso('')} />
+          </div>
+          <div className="w-40">
+            <Label>Ref Fornecedor</Label>
+            <SearchInput value={fRefFornecedor} onChange={(e) => setFRefFornecedor(e.target.value)} onClear={() => setFRefFornecedor('')} />
           </div>
           <Button
             variant="ghost"
             onClick={() => {
-              setComprador(filtroInicial);
-              setCompradorGrupo('');
+              setFPO(filtroInicial);
+              setFPI('');
               setAnoMesInicio(String(anoMes(-10)));
               setFiltrosAvancados([]);
               setFCanal('');
@@ -376,6 +386,7 @@ export default function ListaCompras() {
               setFGriffe('');
               setFMaterialPai('');
               setFProcesso('');
+              setFRefFornecedor('');
             }}
           >
             Limpar filtros
