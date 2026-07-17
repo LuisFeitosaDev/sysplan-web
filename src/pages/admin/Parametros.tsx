@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/misc';
 interface CampoDef {
   nome: string;
   label: string;
-  tipo?: 'texto' | 'numero';
+  tipo?: 'texto' | 'numero' | 'booleano';
 }
 
 interface TabelaDef {
@@ -120,6 +120,13 @@ const TABELAS: TabelaDef[] = [
       { nome: 'dc_status', label: 'Status' },
     ],
   },
+  {
+    id: 'modal_lancamento', nome: 'Modais a Lançar', tabela: 'prm_modal_lancamento', pk: ['dc_modal'],
+    campos: [
+      { nome: 'dc_modal', label: 'Modal' },
+      { nome: 'lancar', label: 'Lançar no Agente de Carga?', tipo: 'booleano' },
+    ],
+  },
 ];
 
 const ROTINAS = [
@@ -147,7 +154,12 @@ function CrudTabela({ def }: { def: TabelaDef }) {
     mutationFn: async () => {
       if (!edicao) return;
       const payload: Record<string, any> = {};
-      for (const c of def.campos) payload[c.nome] = c.tipo === 'numero' ? Number(edicao[c.nome]) || 0 : edicao[c.nome] ?? '';
+      for (const c of def.campos) {
+        payload[c.nome] =
+          c.tipo === 'numero' ? Number(edicao[c.nome]) || 0
+          : c.tipo === 'booleano' ? edicao[c.nome] === true || edicao[c.nome] === 'true'
+          : edicao[c.nome] ?? '';
+      }
       if (novoRegistro) {
         if (!def.pkGerada) for (const k of def.pk) payload[k] = edicao[k];
         const { error } = await supabase.from(def.tabela).insert(payload);
@@ -191,7 +203,11 @@ function CrudTabela({ def }: { def: TabelaDef }) {
 
   const colunas: Coluna<any>[] = [
     ...(def.pkGerada ? [{ key: def.pk[0], titulo: def.pk[0].toUpperCase() }] : []),
-    ...def.campos.map((c) => ({ key: c.nome, titulo: c.label })),
+    ...def.campos.map((c) => ({
+      key: c.nome,
+      titulo: c.label,
+      render: c.tipo === 'booleano' ? (row: any) => (row[c.nome] ? 'Sim' : 'Não') : undefined,
+    })),
     {
       key: '__acoes',
       titulo: '',
@@ -220,17 +236,29 @@ function CrudTabela({ def }: { def: TabelaDef }) {
           <DialogContent>
             <DialogHeader><DialogTitle>{def.nome}</DialogTitle></DialogHeader>
             <div className="grid grid-cols-2 gap-3">
-              {def.campos.map((c) => (
-                <div key={c.nome}>
-                  <Label>{c.label}</Label>
-                  <Input
-                    type={c.tipo === 'numero' ? 'number' : 'text'}
-                    value={edicao[c.nome] ?? ''}
-                    disabled={!novoRegistro && def.pk.includes(c.nome) && !def.pkGerada}
-                    onChange={(e) => setEdicao({ ...edicao, [c.nome]: e.target.value })}
-                  />
-                </div>
-              ))}
+              {def.campos.map((c) =>
+                c.tipo === 'booleano' ? (
+                  <label key={c.nome} className="flex items-center gap-2 pt-6">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={edicao[c.nome] === true || edicao[c.nome] === 'true'}
+                      onChange={(e) => setEdicao({ ...edicao, [c.nome]: e.target.checked })}
+                    />
+                    <span className="text-sm">{c.label}</span>
+                  </label>
+                ) : (
+                  <div key={c.nome}>
+                    <Label>{c.label}</Label>
+                    <Input
+                      type={c.tipo === 'numero' ? 'number' : 'text'}
+                      value={edicao[c.nome] ?? ''}
+                      disabled={!novoRegistro && def.pk.includes(c.nome) && !def.pkGerada}
+                      onChange={(e) => setEdicao({ ...edicao, [c.nome]: e.target.value })}
+                    />
+                  </div>
+                ),
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setEdicao(null)}>Cancelar</Button>
