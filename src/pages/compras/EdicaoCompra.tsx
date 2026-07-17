@@ -219,7 +219,12 @@ export function EdicaoCompra({
 
   const Texto = ({ campo, label }: { campo: keyof Compra; label: string }) => (
     <CampoLinha label={label}>
-      <Input className={CTRL} value={(form[campo] as string) ?? ''} onChange={(e) => set(campo, e.target.value)} />
+      <Input
+        className={CTRL}
+        value={(form[campo] as string) ?? ''}
+        onChange={(e) => set(campo, e.target.value)}
+        disabled={!novo && (campo === 'cd_pedido_sap' || campo === 'cd_material_pai')}
+      />
     </CampoLinha>
   );
 

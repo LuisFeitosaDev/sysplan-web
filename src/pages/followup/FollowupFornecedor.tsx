@@ -133,21 +133,254 @@ export default function FollowupFornecedor() {
       if (need.error) throw need.error;
       return { baixa: baixa.data, novas: need.data };
     },
-    onSuccess: (r) => {
+    onSuccess: async (r) => {
       toast.success(`Rotinas executadas: ${r.baixa} baixa(s) automática(s), ${r.novas} follow-up(s) gerado(s).`);
       registraLog('FollowFornecedor - Rotinas automaticas', 0, '', `baixas=${r.baixa}; novos=${r.novas}`);
       qc.invalidateQueries({ queryKey: ['followups'] });
+
+      // Extra: sincronizar chaves com Acompanhamento de Importações e marcar baixas por embarque
+      try {
+        const extras = await baixaPorFUPComex();
+        const criados = await sincronizarChaves();
+        if (extras > 0 || criados > 0) {
+          toast.success(`Sincronização concluída: ${extras} baixa(s) via AcompImportações, ${criados} follow(s) criados.`);
+          qc.invalidateQueries({ queryKey: ['followups'] });
+          qc.invalidateQueries({ queryKey: ['acompanhamento_importacoes'] });
+          qc.invalidateQueries({ queryKey: ['compras_lista'] });
+        }
+      } catch (err: any) {
+        console.error(err);
+      }
     },
     onError: (e) => toast.error(String(e)),
   });
 
   const [exportando, setExportando] = useState(false);
 
+  // --- Helper: fecha follows abertos quando houver correspondência no Acompanhamento (embarque encontrado)
+  async function baixaPorFUPComex(): Promise<number> {
+    const hoje = new Date().toISOString().slice(0, 10);
+    // busca follows abertos com cd_compra válido
+    const { data: follows, error: eF } = await supabase
+      .from('followup_fornecedor')
+      .select('cd_follow_forn, cd_compra')
+      .is('dt_fim_followup', null)
+      .not('cd_compra', 'is', null);
+    if (eF) throw eF;
+    if (!follows || follows.length === 0) return 0;
+
+    let count = 0;
+    // processa em blocos para evitar sobrecarga
+    for (let i = 0; i < follows.length; i += 200) {
+      const bloco = follows.slice(i, i + 200);
+      const cds = bloco.map((f: any) => f.cd_compra).filter(Boolean);
+      // busca acompanhamento para esses CDs com embarque preenchido
+      const { data: acomps, error: eA } = await supabase
+        .from('acompanhamento_importacoes')
+        .select('cd_compra, cd_embarque')
+        .in('cd_compra', cds)
+        .not('cd_embarque', 'is', null)
+        .limit(1000);
+      if (eA) throw eA;
+      const mapA = new Map<number, any>();
+      for (const a of acomps ?? []) mapA.set(a.cd_compra, a);
+
+      for (const f of bloco) {
+        const a = mapA.get(f.cd_compra);
+        if (a) {
+          const hojeStr = hoje;
+          const atualizacao: Record<string, any> = {
+            dt_fim_followup: hojeStr,
+            dc_avaliacao_comprador: 'BAIXA SISTEMA',
+            dc_observacao_avaliacao: `Encontrado em AcompImportacoes: embarque ${a.cd_embarque}`,
+            dt_avaliacao_comprador: hojeStr,
+          };
+          const { error: eU } = await supabase.from('followup_fornecedor').update(atualizacao).eq('cd_follow_forn', f.cd_follow_forn);
+          if (!eU) count++;
+        }
+      }
+    }
+    return count;
+  }
+
+  // --- Helper: cria follow-ups para compras cujo mês/ano de recebimento é maior que o atual
+  //           e que não aparecem no Acompanhamento nem têm follow aberto.
+  async function sincronizarChaves(): Promise<number> {
+    const hoje = new Date();
+    const inicioProximoMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1).toISOString().slice(0, 10);
+
+    // busca compras com dt_recebimento >= inicioProximoMes
+    const compras: any[] = [];
+    let offset = 0;
+    while (true) {
+      const { data: page, error } = await supabase
+        .from('controle_compras')
+        .select('cd_compra, cd_pedido_sap, cd_material_pai, dc_fornecedor, dt_recebimento, dt_revised_delivery, dc_modal')
+        .gte('dt_recebimento', inicioProximoMes)
+        .neq('dc_status', 'EXCLUIDO')
+        .order('dt_recebimento')
+        .range(offset, offset + 999);
+      if (error) throw error;
+      compras.push(...(page ?? []));
+      if (!page || page.length < 1000) break;
+      offset += 1000;
+    }
+    if (compras.length === 0) return 0;
+
+    let criados = 0;
+    for (const c of compras) {
+      // verifica se existe Acompanhamento com mesma chave (pedido sap + material pai)
+      const { data: ac, error: eAc } = await supabase
+        .from('acompanhamento_importacoes')
+        .select('id, cd_compra, cd_embarque')
+        .eq('cd_pedido_sap', c.cd_pedido_sap)
+        .eq('cd_material_pai', c.cd_material_pai)
+        .limit(1)
+        .maybeSingle();
+      if (eAc) throw eAc;
+      if (ac) continue; // já existe informação no AcompImportacoes
+
+      // verifica if existe follow aberto para essa compra
+      const { data: openF } = await supabase
+        .from('followup_fornecedor')
+        .select('*')
+        .eq('cd_compra', c.cd_compra)
+        .is('dt_fim_followup', null)
+        .limit(1)
+        .maybeSingle();
+      if (openF) continue; // já existe follow aguardando resposta -> usar essa linha
+
+      // busca o último follow (com resposta) para copiar resposta se houver
+      const { data: lastF } = await supabase
+        .from('followup_fornecedor')
+        .select('*')
+        .eq('cd_compra', c.cd_compra)
+        .not('dt_fim_followup', 'is', null)
+        .order('cd_follow_forn', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (lastF) {
+        // cria nova linha copiando campos relevantes da última resposta (aplica resposta antiga)
+        const payload: Record<string, any> = {
+          cd_compra: c.cd_compra,
+          dt_revised_delivery_original: lastF.dt_revised_delivery_original ?? lastF.dt_revised_delivery_proposta ?? c.dt_revised_delivery,
+          dt_recebimento_cb_original: lastF.dt_recebimento_cb_original ?? c.dt_recebimento,
+          dc_modal_original: lastF.dc_modal_original ?? c.dc_modal,
+          dt_inicio_followup: new Date().toISOString().slice(0, 10),
+          dc_status_fornecedor: lastF.dc_status_fornecedor ?? 'PENDENTE',
+          dc_avaliacao_comprador: lastF.dc_avaliacao_comprador ?? 'PENDENTE',
+        };
+        const { data: created, error: eC } = await supabase.from('followup_fornecedor').insert(payload).select('cd_follow_forn, cd_compra');
+        if (eC) throw eC;
+        if (created && created.length > 0) criados += created.length;
+      } else {
+        // cria snapshot básico (sem resposta anterior)
+        const payload: Record<string, any> = {
+          cd_compra: c.cd_compra,
+          dt_revised_delivery_original: c.dt_revised_delivery,
+          dt_recebimento_cb_original: c.dt_recebimento,
+          dc_modal_original: c.dc_modal,
+          dt_inicio_followup: new Date().toISOString().slice(0, 10),
+          dc_status_fornecedor: 'PENDENTE',
+          dc_avaliacao_comprador: 'PENDENTE',
+        };
+        const { data: created, error: eC } = await supabase.from('followup_fornecedor').insert(payload).select('cd_follow_forn, cd_compra');
+        if (eC) throw eC;
+        if (created && created.length > 0) criados += created.length;
+      }
+    }
+
+    return criados;
+  }
+
   /**
    * Exporta o follow-up do fornecedor selecionado na máscara oficial (senha Plan8):
    * compras não excluídas com Revised Delivery do mês atual até +10 meses.
    * Compras sem follow em aberto ganham um novo follow (snapshot das datas atuais).
    */
+  // Core: gera e baixa arquivo para um único fornecedor (reutilizável)
+  async function gerarExportParaFornecedor(fornec: string) {
+    const hoje = new Date();
+    const inicioMes = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`;
+    const limite = new Date(hoje.getFullYear(), hoje.getMonth() + 10, 1);
+    const fimJanela = `${limite.getFullYear()}-${String(limite.getMonth() + 1).padStart(2, '0')}-01`;
+
+    const compras = await fetchAll<any>((inicio, fim) =>
+      supabase
+        .from('controle_compras')
+        .select('cd_compra, dc_fornecedor, cd_pedido_fornecedor, cd_material_fornecedor, cd_pedido_sap, cd_material_pai, dc_grupo, dc_canal, dc_linha, dc_griffe, dt_revised_delivery, dt_recebimento, dc_modal')
+        .eq('dc_fornecedor', fornec)
+        .neq('dc_status', 'EXCLUIDO')
+        .gte('dt_revised_delivery', inicioMes)
+        .lt('dt_revised_delivery', fimJanela)
+        .order('dt_revised_delivery')
+        .range(inicio, fim),
+    );
+    if (compras.length === 0) return 0;
+
+    // Follows em aberto existentes dessas compras (consulta em blocos de 300 CDs)
+    const followPorCompra = new Map<number, any>();
+    const cds = compras.map((c) => c.cd_compra);
+    for (let i = 0; i < cds.length; i += 300) {
+      const { data: bloco, error } = await supabase
+        .from('followup_fornecedor')
+        .select('cd_follow_forn, cd_compra, dt_revised_delivery_original, dt_recebimento_cb_original, dc_modal_original')
+        .is('dt_fim_followup', null)
+        .in('cd_compra', cds.slice(i, i + 300))
+        .limit(1000);
+      if (error) throw error;
+      for (const f of bloco ?? []) followPorCompra.set(f.cd_compra, f);
+    }
+
+    // Cria follow (snapshot) para compras sem follow em aberto
+    const semFollow = compras.filter((c) => !followPorCompra.has(c.cd_compra));
+    if (semFollow.length > 0) {
+      const { data: criados, error } = await supabase
+        .from('followup_fornecedor')
+        .insert(
+          semFollow.map((c) => ({
+            cd_compra: c.cd_compra,
+            dt_revised_delivery_original: c.dt_revised_delivery,
+            dt_recebimento_cb_original: c.dt_recebimento,
+            dc_modal_original: c.dc_modal,
+            dt_inicio_followup: new Date().toISOString().slice(0, 10),
+            dc_status_fornecedor: 'PENDENTE',
+            dc_avaliacao_comprador: 'PENDENTE',
+          })),
+        )
+        .select('cd_follow_forn, cd_compra, dt_revised_delivery_original, dt_recebimento_cb_original, dc_modal_original');
+      if (error) throw error;
+      for (const f of criados ?? []) followPorCompra.set(f.cd_compra, f);
+    }
+
+    const linhas: LinhaFollowExport[] = compras
+      .filter((c) => followPorCompra.has(c.cd_compra))
+      .map((c) => {
+        const f = followPorCompra.get(c.cd_compra)!;
+        return {
+          cdFollow: f.cd_follow_forn,
+          cdCompra: c.cd_compra,
+          supplier: c.dc_fornecedor ?? '',
+          supplierOrder: c.cd_pedido_fornecedor ?? '',
+          supplierReference: c.cd_material_fornecedor ?? '',
+          cbOrder: c.cd_pedido_sap ?? '',
+          cdReference: c.cd_material_pai ?? '',
+          group: `${c.dc_grupo ?? ''} ${c.dc_canal ?? ''}`.trim(),
+          collection: `${c.dc_linha ?? ''} | ${c.dc_griffe ?? ''}`,
+          deliveryDate: f.dt_revised_delivery_original ?? c.dt_revised_delivery,
+          cbArrivalDate: f.dt_recebimento_cb_original ?? c.dt_recebimento,
+          modal: f.dc_modal_original ?? c.dc_modal ?? '',
+        };
+      });
+
+    const blob = await gerarArquivoFollowup(linhas);
+    const nome = `Followup_Fornecedor_${new Date().toISOString().slice(0, 10).replace(/-/g, '')} - ${fornec.replace(/[\\/]/g, '')}.xlsx`;
+    baixarBlob(blob, nome);
+    registraLog('FollowFornecedor - Exportacao', 0, '', `${fornec}: ${linhas.length} linhas`);
+    return linhas.length;
+  }
+
   const exportarPorFornecedor = async () => {
     if (!fornecedor) {
       toast.error('Selecione o fornecedor para exportar.');
@@ -155,87 +388,9 @@ export default function FollowupFornecedor() {
     }
     setExportando(true);
     try {
-      const hoje = new Date();
-      const inicioMes = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-01`;
-      const limite = new Date(hoje.getFullYear(), hoje.getMonth() + 10, 1);
-      const fimJanela = `${limite.getFullYear()}-${String(limite.getMonth() + 1).padStart(2, '0')}-01`;
-
-      const compras = await fetchAll<any>((inicio, fim) =>
-        supabase
-          .from('controle_compras')
-          .select('cd_compra, dc_fornecedor, cd_pedido_fornecedor, cd_material_fornecedor, cd_pedido_sap, cd_material_pai, dc_grupo, dc_canal, dc_linha, dc_griffe, dt_revised_delivery, dt_recebimento, dc_modal')
-          .eq('dc_fornecedor', fornecedor)
-          .neq('dc_status', 'EXCLUIDO')
-          .gte('dt_revised_delivery', inicioMes)
-          .lt('dt_revised_delivery', fimJanela)
-          .order('dt_revised_delivery')
-          .range(inicio, fim),
-      );
-      if (compras.length === 0) {
-        toast.info('Nenhuma compra do fornecedor com Revised Delivery nos próximos 10 meses.');
-        return;
-      }
-
-      // Follows em aberto existentes dessas compras (consulta em blocos de 300 CDs)
-      const followPorCompra = new Map<number, any>();
-      const cds = compras.map((c) => c.cd_compra);
-      for (let i = 0; i < cds.length; i += 300) {
-        const { data: bloco, error } = await supabase
-          .from('followup_fornecedor')
-          .select('cd_follow_forn, cd_compra, dt_revised_delivery_original, dt_recebimento_cb_original, dc_modal_original')
-          .is('dt_fim_followup', null)
-          .in('cd_compra', cds.slice(i, i + 300))
-          .limit(1000);
-        if (error) throw error;
-        for (const f of bloco ?? []) followPorCompra.set(f.cd_compra, f);
-      }
-
-      // Cria follow (snapshot) para compras sem follow em aberto
-      const semFollow = compras.filter((c) => !followPorCompra.has(c.cd_compra));
-      if (semFollow.length > 0) {
-        const { data: criados, error } = await supabase
-          .from('followup_fornecedor')
-          .insert(
-            semFollow.map((c) => ({
-              cd_compra: c.cd_compra,
-              dt_revised_delivery_original: c.dt_revised_delivery,
-              dt_recebimento_cb_original: c.dt_recebimento,
-              dc_modal_original: c.dc_modal,
-              dt_inicio_followup: new Date().toISOString().slice(0, 10),
-              dc_status_fornecedor: 'PENDENTE',
-              dc_avaliacao_comprador: 'PENDENTE',
-            })),
-          )
-          .select('cd_follow_forn, cd_compra, dt_revised_delivery_original, dt_recebimento_cb_original, dc_modal_original');
-        if (error) throw error;
-        for (const f of criados ?? []) followPorCompra.set(f.cd_compra, f);
-      }
-
-      const linhas: LinhaFollowExport[] = compras
-        .filter((c) => followPorCompra.has(c.cd_compra))
-        .map((c) => {
-          const f = followPorCompra.get(c.cd_compra)!;
-          return {
-            cdFollow: f.cd_follow_forn,
-            cdCompra: c.cd_compra,
-            supplier: c.dc_fornecedor ?? '',
-            supplierOrder: c.cd_pedido_fornecedor ?? '',
-            supplierReference: c.cd_material_fornecedor ?? '',
-            cbOrder: c.cd_pedido_sap ?? '',
-            cdReference: c.cd_material_pai ?? '',
-            group: `${c.dc_grupo ?? ''} ${c.dc_canal ?? ''}`.trim(),
-            collection: `${c.dc_linha ?? ''} | ${c.dc_griffe ?? ''}`,
-            deliveryDate: f.dt_revised_delivery_original ?? c.dt_revised_delivery,
-            cbArrivalDate: f.dt_recebimento_cb_original ?? c.dt_recebimento,
-            modal: f.dc_modal_original ?? c.dc_modal ?? '',
-          };
-        });
-
-      const blob = await gerarArquivoFollowup(linhas);
-      const nome = `Followup_Fornecedor_${new Date().toISOString().slice(0, 10).replace(/-/g, '')} - ${fornecedor.replace(/[\\/]/g, '')}.xlsx`;
-      baixarBlob(blob, nome);
-      registraLog('FollowFornecedor - Exportacao', 0, '', `${fornecedor}: ${linhas.length} linhas`);
-      toast.success(`${nome} gerado com ${linhas.length} linha(s) — planilha protegida (senha Plan8).`);
+      const count = await gerarExportParaFornecedor(fornecedor);
+      if (count === 0) toast.info('Nenhuma compra do fornecedor com Revised Delivery nos próximos 10 meses.');
+      else toast.success(`Exportação concluída: ${count} linha(s).`);
       qc.invalidateQueries({ queryKey: ['followups'] });
     } catch (e: any) {
       toast.error(e.message ?? String(e));
@@ -407,6 +562,30 @@ export default function FollowupFornecedor() {
               </Button>
               <Button variant="outline" loading={exportando} onClick={exportarPorFornecedor}>
                 <FileDown /> Exportar (por fornecedor)
+              </Button>
+              <Button variant="outline" loading={exportando} onClick={async () => {
+                // Exporta para todos os fornecedores visíveis na lista atual (um arquivo por fornecedor)
+                const fornecedores = [...new Set((filtrados ?? []).map((f) => f.dc_fornecedor).filter(Boolean))] as string[];
+                if (fornecedores.length === 0) {
+                  toast.error('Nada selecionado para exportar — filtre por fornecedor(s) ou dados visíveis na lista.');
+                  return;
+                }
+                setExportando(true);
+                try {
+                  let total = 0;
+                  for (const f of fornecedores) {
+                    const c = await gerarExportParaFornecedor(f);
+                    total += c;
+                  }
+                  toast.success(`Exportados ${total} linha(s) em ${fornecedores.length} arquivo(s).`);
+                  qc.invalidateQueries({ queryKey: ['followups'] });
+                } catch (err: any) {
+                  toast.error(err.message ?? String(err));
+                } finally {
+                  setExportando(false);
+                }
+              }}>
+                <FileDown /> Exportar (visíveis por fornecedor)
               </Button>
               <label>
                 <Button variant="outline" loading={importando} onClick={() => document.getElementById('imp-follow')?.click()}>

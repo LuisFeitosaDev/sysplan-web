@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { CalendarSearch, Rocket, RefreshCw } from 'lucide-react';
+import { CalendarSearch, Ship, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
@@ -221,7 +221,7 @@ export default function LancarAcompanhamento() {
                   }
                 }}
               >
-                <Rocket /> Lançar {novos.length} registro(s) no Acompanhamento
+                <Ship /> Lançar {novos.length} registro(s) no Acompanhamento
               </Button>
             )}
             {!editavel && (

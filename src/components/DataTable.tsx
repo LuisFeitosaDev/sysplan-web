@@ -13,6 +13,12 @@ export interface Coluna<T> {
   ordenavel?: boolean;
 }
 
+interface ColunaFiltro {
+  key: string;
+  tipo?: 'text' | 'select';
+  options?: string[];
+}
+
 interface DataTableProps<T> {
   colunas: Coluna<T>[];
   dados: T[];
@@ -26,6 +32,8 @@ interface DataTableProps<T> {
   rowKey: (row: T) => number | string;
   rodape?: ReactNode;
   altura?: string;
+  /** Filtros inline por coluna (opcional) */
+  columnFilters?: ColunaFiltro[];
 }
 
 export function DataTable<T extends Record<string, any>>({
@@ -40,19 +48,39 @@ export function DataTable<T extends Record<string, any>>({
   rowKey,
   rodape,
   altura = 'calc(100vh - 300px)',
+  columnFilters,
 }: DataTableProps<T>) {
   const [filtro, setFiltro] = useState('');
   const [pagina, setPagina] = useState(0);
   const [ordem, setOrdem] = useState<{ key: string; dir: 'asc' | 'desc' } | null>(null);
+  const [colFiltros, setColFiltros] = useState<Record<string, string>>(() => ({}));
 
   const filtrados = useMemo(() => {
     let resultado = dados;
+    // global filter
     if (filtro.trim()) {
       const f = filtro.toLowerCase();
-      resultado = dados.filter((r) =>
+      resultado = resultado.filter((r) =>
         colunas.some((c) => String(r[c.key] ?? '').toLowerCase().includes(f)),
       );
     }
+    // column filters
+    if (columnFilters && Object.keys(colFiltros).length > 0) {
+      resultado = resultado.filter((r) => {
+        for (const cf of columnFilters) {
+          const val = (colFiltros[cf.key] ?? '').toString().trim();
+          if (!val) continue;
+          const cell = r[cf.key];
+          if (cf.tipo === 'select') {
+            if (String(cell ?? '') !== val) return false;
+          } else {
+            if (!String(cell ?? '').toLowerCase().includes(val.toLowerCase())) return false;
+          }
+        }
+        return true;
+      });
+    }
+
     if (ordem) {
       resultado = [...resultado].sort((a, b) => {
         const va = a[ordem.key];
@@ -68,7 +96,7 @@ export function DataTable<T extends Record<string, any>>({
       });
     }
     return resultado;
-  }, [dados, filtro, ordem, colunas]);
+  }, [dados, filtro, ordem, colunas, columnFilters, colFiltros]);
 
   const totalPaginas = Math.max(1, Math.ceil(filtrados.length / paginacao));
   const paginaAtual = Math.min(pagina, totalPaginas - 1);
@@ -126,6 +154,45 @@ export function DataTable<T extends Record<string, any>>({
                 </th>
               ))}
             </tr>
+            {/* column filters row */}
+            {columnFilters && (
+              <tr className="border-b bg-secondary/60">
+                {colunas.map((c) => {
+                  const cf = columnFilters.find((x) => x.key === c.key);
+                  return (
+                    <th key={`f-${c.key}`} className="h-10 px-2 py-1 align-middle">
+                      {cf ? (
+                        cf.tipo === 'select' ? (
+                          <select
+                            value={colFiltros[c.key] ?? ''}
+                            onChange={(e) => {
+                              setColFiltros((s) => ({ ...s, [c.key]: e.target.value }));
+                              setPagina(0);
+                            }}
+                            className="w-full rounded border px-2 py-1 text-sm"
+                          >
+                            <option value="">(Todos)</option>
+                            {(cf.options ?? []).map((op) => (
+                              <option key={op} value={op}>{op}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <Input
+                            placeholder="Filtrar..."
+                            value={colFiltros[c.key] ?? ''}
+                            onChange={(e) => {
+                              setColFiltros((s) => ({ ...s, [c.key]: e.target.value }));
+                              setPagina(0);
+                            }}
+                            className="w-full pl-2 pr-2 py-1 text-sm"
+                          />
+                        )
+                      ) : null}
+                    </th>
+                  );
+                })}
+              </tr>
+            )}
           </thead>
           <tbody>
             {carregando

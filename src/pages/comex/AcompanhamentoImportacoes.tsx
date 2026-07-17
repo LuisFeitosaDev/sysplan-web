@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileDown, PencilRuler, Plus, RefreshCw, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -70,6 +70,32 @@ export default function AcompanhamentoImportacoes() {
   const [campoMassa, setCampoMassa] = useState(CAMPOS_MASSA[0].campo);
   const [valorMassa, setValorMassa] = useState('');
 
+  // Manual assignment of "lancar" and its responsible person.
+  // Persisted to localStorage (key: 'acomp_lancar_assigns_v1') and also
+  // attempted to persist to the DB when possible. This avoids failing
+  // when the DB schema does not contain these columns.
+  const [manualAssigns, setManualAssigns] = useState<Record<number, { lancar: boolean; responsavel?: string }>>({});
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [assignLancar, setAssignLancar] = useState<'Sim' | 'Não'>('Sim');
+  const [assignResponsavel, setAssignResponsavel] = useState('');
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('acomp_lancar_assigns_v1');
+      if (raw) setManualAssigns(JSON.parse(raw));
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  const persistManualAssigns = (m: Record<number, any>) => {
+    try {
+      localStorage.setItem('acomp_lancar_assigns_v1', JSON.stringify(m));
+    } catch (e) {
+      // ignore
+    }
+  };
+
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['acompanhamento_importacoes'],
     queryFn: async () => {
@@ -90,15 +116,37 @@ export default function AcompanhamentoImportacoes() {
     },
   });
 
+  const [statusFillFilter, setStatusFillFilter] = useState<string>('');
+
+  // Augment data with status de preenchimento and lancar flag
+  const dataAugment = useMemo(() => {
+    return (data ?? []).map((x: any) => {
+      const hasPedido = x.cd_pedido_sap && String(x.cd_pedido_sap).trim() !== '' && String(x.cd_pedido_sap).trim().toUpperCase() !== 'N/I';
+      const hasMaterial = x.cd_material_pai && String(x.cd_material_pai).trim() !== '';
+      const launched = !!x.cd_embarque;
+      let statusFill = 'Erro de Preenchimento';
+      if (launched) statusFill = 'Já lançado';
+      else if (hasPedido && hasMaterial) statusFill = 'A lançar';
+
+      // Apply any manual overrides persisted locally (or previously saved to DB)
+      const manual = manualAssigns && typeof x.id !== 'undefined' ? manualAssigns[x.id] : undefined;
+      const lancarFlag = manual ? manual.lancar : statusFill === 'A lançar';
+      const responsavel = manual ? manual.responsavel : x.responsavel_lancamento || '';
+
+      return { ...x, status_preenchimento: statusFill, lancar: lancarFlag, responsavel_lancamento: responsavel };
+    });
+  }, [data, manualAssigns]);
+
   const filtrados = useMemo(() => {
-    let r = data ?? [];
+    let r = dataAugment ?? [];
     if (status) r = r.filter((x) => x.dc_status_calculado === status);
     if (grupo) r = r.filter((x) => (x.dc_grupo ?? '').toLowerCase().includes(grupo.toLowerCase()));
     if (pedido) r = r.filter((x) => (x.cd_pedido_sap ?? '').includes(pedido));
     if (material) r = r.filter((x) => (x.cd_material_pai ?? '').toLowerCase().includes(material.toLowerCase()));
     if (embarque) r = r.filter((x) => (x.cd_embarque ?? '').toLowerCase().includes(embarque.toLowerCase()));
+    if (statusFillFilter) r = r.filter((x) => x.status_preenchimento === statusFillFilter);
     return r;
-  }, [data, status, grupo, pedido, material, embarque]);
+  }, [dataAugment, status, grupo, pedido, material, embarque, statusFillFilter]);
 
   const resumoStatus = useMemo(() => {
     const m = new Map<string, number>();
@@ -186,11 +234,65 @@ export default function AcompanhamentoImportacoes() {
     onError: (e: any) => toast.error(e.message ?? String(e)),
   });
 
+  // Mutation to assign "lancar" flag and responsible person for selected rows.
+  const assignLancamento = useMutation({
+    mutationFn: async (payload: { ids: number[]; lancar: boolean; responsavel?: string }) => {
+      const { ids, lancar, responsavel } = payload;
+      const errors: string[] = [];
+      for (const id of ids) {
+        try {
+          // Attempt to persist to DB. If the table does not have these columns,
+          // Supabase will return an error and we'll fallback to local persistence.
+          const updatePayload: any = { lancar, responsavel_lancamento: responsavel || null };
+          const { error } = await supabase.from('acompanhamento_importacoes').update(updatePayload).eq('id', id);
+          if (error) errors.push(`Linha ${id}: ${error.message}`);
+        } catch (e: any) {
+          errors.push(String(e.message ?? e));
+        }
+      }
+      if (errors.length) throw new Error(errors.join('\n'));
+      return true;
+    },
+    onSuccess: () => {
+      toast.success('Atribuições salvas no servidor.');
+      // update local map as well for immediate UI consistency
+      const next = { ...manualAssigns };
+      for (const id of selecionadas) next[id] = { lancar: assignLancar === 'Sim', responsavel: assignResponsavel };
+      setManualAssigns(next);
+      persistManualAssigns(next);
+      setAssignDialogOpen(false);
+      qc.invalidateQueries({ queryKey: ['acompanhamento_importacoes'] });
+      setSelecionadas(new Set());
+    },
+    onError: (e: any) => {
+      // Save locally if server persist failed
+      const next = { ...manualAssigns };
+      for (const id of selecionadas) next[id] = { lancar: assignLancar === 'Sim', responsavel: assignResponsavel };
+      setManualAssigns(next);
+      persistManualAssigns(next);
+      setAssignDialogOpen(false);
+      setSelecionadas(new Set());
+      toast.error('Erro ao salvar no servidor — alterações salvas localmente.');
+    },
+  });
+
+  // inline filter options derived from data
+  const opcStatus = Array.from(new Set((data ?? []).map((d: any) => d.dc_status_calculado).filter(Boolean))).sort();
+  const opcGrupos = Array.from(new Set((data ?? []).map((d: any) => d.dc_grupo).filter(Boolean))).sort();
+  const opcCanal = Array.from(new Set((data ?? []).map((d: any) => d.dc_canal).filter(Boolean))).sort();
+  const opcForne = Array.from(new Set((data ?? []).map((d: any) => d.dc_fornecedor).filter(Boolean))).sort();
+
   const colunas: Coluna<any>[] = [
     {
-      key: 'dc_status_calculado', titulo: 'Status',
-      render: (r) => <Badge variant={CORES_STATUS[r.dc_status_calculado] ?? 'secondary'}>{r.dc_status_calculado}</Badge>,
+      key: 'status_preenchimento',
+      titulo: 'Status Preenchimento',
+      render: (r) => (
+        <Badge variant={r.status_preenchimento === 'Já lançado' ? 'success' : r.status_preenchimento === 'A lançar' ? 'default' : 'destructive'}>
+          {r.status_preenchimento}
+        </Badge>
+      ),
     },
+    { key: 'dc_status_calculado', titulo: 'Status', render: (r) => <Badge variant={CORES_STATUS[r.dc_status_calculado] ?? 'secondary'}>{r.dc_status_calculado}</Badge> },
     { key: 'dc_grupo', titulo: 'Grupo' },
     { key: 'dc_canal', titulo: 'Canal' },
     { key: 'dc_fornecedor', titulo: 'Fornecedor' },
@@ -199,6 +301,10 @@ export default function AcompanhamentoImportacoes() {
     { key: 'cd_pedido_sap', titulo: 'Pedido SAP' },
     { key: 'nr_quantidade', titulo: 'Qtde', render: (r) => formatNumber(r.nr_quantidade, 0) },
     { key: 'dc_modal', titulo: 'Modal' },
+    { key: 'lancar', titulo: 'Lançar', render: (r) => (r.lancar ? <Badge variant="default">Sim</Badge> : <span className="text-muted-foreground">Não</span>) },
+    { key: 'responsavel_lancamento', titulo: 'Responsável', render: (r) => (
+      r.responsavel_lancamento ? <div className="text-sm">{r.responsavel_lancamento}</div> : <span className="text-muted-foreground">—</span>
+    ) },
     { key: 'dt_delivery', titulo: 'Delivery', render: (r) => formatDate(r.dt_delivery) },
     { key: 'dt_recebimento', titulo: 'Recebimento', render: (r) => formatDate(r.dt_recebimento) },
     { key: 'cd_embarque', titulo: 'Processo' },
@@ -218,7 +324,7 @@ export default function AcompanhamentoImportacoes() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Acompanhamento de Importações</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Followup Agente de Carga</h1>
           <p className="text-sm text-muted-foreground">
             Duplo clique edita o embarque · clique seleciona (Shift para intervalo) para edição em massa
           </p>
@@ -234,6 +340,11 @@ export default function AcompanhamentoImportacoes() {
           >
             <FileDown /> Excel
           </Button>
+          {editavel && selecionadas.size > 0 && (
+            <Button onClick={() => { setAssignDialogOpen(true); setAssignLancar('Sim'); setAssignResponsavel(''); }}>
+              <PencilRuler /> Definir Lançar/Responsável ({selecionadas.size})
+            </Button>
+          )}
           {editavel && (
             <Button onClick={() => setNovo({ ...NOVO_REGISTRO })}>
               <Plus /> Inserir registro
@@ -250,6 +361,30 @@ export default function AcompanhamentoImportacoes() {
             </Badge>
           </button>
         ))}
+      </div>
+
+      {/* KPIs de preenchimento */}
+      <div className="flex flex-wrap gap-2">
+        {(() => {
+          const counts = new Map<string, number>();
+          for (const r of dataAugment ?? []) counts.set(r.status_preenchimento, (counts.get(r.status_preenchimento) ?? 0) + 1);
+          const ja = counts.get('Já lançado') ?? 0;
+          const aLancar = counts.get('A lançar') ?? 0;
+          const erro = counts.get('Erro de Preenchimento') ?? 0;
+          return (
+            <>
+              <button onClick={() => setStatusFillFilter(statusFillFilter === 'Já lançado' ? '' : 'Já lançado')}>
+                <Badge className="cursor-pointer px-3 py-1" variant={statusFillFilter === 'Já lançado' ? 'default' : 'success'}>Já lançado: {ja}</Badge>
+              </button>
+              <button onClick={() => setStatusFillFilter(statusFillFilter === 'A lançar' ? '' : 'A lançar')}>
+                <Badge className="cursor-pointer px-3 py-1" variant={statusFillFilter === 'A lançar' ? 'default' : 'secondary'}>A lançar: {aLancar}</Badge>
+              </button>
+              <button onClick={() => setStatusFillFilter(statusFillFilter === 'Erro de Preenchimento' ? '' : 'Erro de Preenchimento')}>
+                <Badge className="cursor-pointer px-3 py-1" variant={statusFillFilter === 'Erro de Preenchimento' ? 'default' : 'destructive'}>Erro: {erro}</Badge>
+              </button>
+            </>
+          );
+        })()}
       </div>
 
       <Card>
@@ -329,7 +464,46 @@ export default function AcompanhamentoImportacoes() {
         }}
         onRowDoubleClick={(r) => editavel && setEdicao({ ...r })}
         paginacao={100}
+        columnFilters={[
+          { key: 'dc_status_calculado', tipo: 'select', options: opcStatus },
+          { key: 'dc_grupo', tipo: 'select', options: opcGrupos },
+          { key: 'dc_canal', tipo: 'select', options: opcCanal },
+          { key: 'dc_fornecedor', tipo: 'select', options: opcForne },
+          { key: 'cd_pedido_sap', tipo: 'text' },
+          { key: 'cd_material_pai', tipo: 'text' },
+          { key: 'cd_embarque', tipo: 'text' },
+        ]}
       />
+
+      {/* Assign Lançar / Responsável dialog */}
+      <Dialog open={assignDialogOpen} onOpenChange={(o) => !o && setAssignDialogOpen(false)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Definir Lançar / Responsável</DialogTitle>
+            <DialogDescription>Aplica a seleção atual ({selecionadas.size} linhas).</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            <div>
+              <Label>Marcar como Lançar?</Label>
+              <Select value={assignLancar} onChange={(e) => setAssignLancar(e.target.value)}>
+                <option value="Sim">Sim</option>
+                <option value="Não">Não</option>
+              </Select>
+            </div>
+            <div>
+              <Label>Responsável</Label>
+              <Input value={assignResponsavel} onChange={(e) => setAssignResponsavel(e.target.value)} placeholder="Nome ou e-mail" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>Cancelar</Button>
+            <Button loading={assignLancamento.isPending} onClick={() => {
+              const ids = Array.from(selecionadas);
+              assignLancamento.mutate({ ids, lancar: assignLancar === 'Sim', responsavel: assignResponsavel });
+            }}>Aplicar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {edicao && (
         <Dialog open onOpenChange={(o) => !o && setEdicao(null)}>
