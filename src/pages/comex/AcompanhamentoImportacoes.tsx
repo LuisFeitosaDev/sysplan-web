@@ -187,7 +187,7 @@ export default function AcompanhamentoImportacoes() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Followup Agente de Carga</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Follow-up Agente de Carga</h1>
           <p className="text-sm text-muted-foreground">
             Duplo clique edita o embarque · clique seleciona (Shift para intervalo) · use o funil no cabeçalho para filtrar
           </p>

@@ -368,10 +368,11 @@ export default function FollowupFornecedor() {
   }
 
   /**
-   * Exporta TODOS os fornecedores conforme os filtros da tela (1 arquivo por fornecedor).
-   * Aplica a regra por chave (Material Pai + Pedido SAP): baixa sistema dos que já têm
-   * info no FUP Comex / Agente de Carga e gera novas linhas para recebimento futuro,
-   * exportando apenas as linhas de follow SEM resposta.
+   * Exporta conforme os filtros da tela — UM único arquivo com todos os fornecedores
+   * do filtro (se filtrar por fornecedor, sai só ele). Aplica a regra por chave
+   * (Material Pai + Pedido SAP): baixa sistema dos que já têm info no FUP Comex /
+   * Agente de Carga e gera novas linhas para recebimento futuro, exportando apenas
+   * as linhas de follow SEM resposta.
    */
   const exportarTodos = async () => {
     setExportando(true);
@@ -379,20 +380,21 @@ export default function FollowupFornecedor() {
       const { baixados, gerados, linhasPorFornecedor } = await prepararExportacaoFollow({
         fornecedor, canal, grupo, pi, materialPai,
       });
-      if (linhasPorFornecedor.size === 0) {
+      // junta todos os fornecedores num único arquivo, ordenado por fornecedor
+      const linhas = [...linhasPorFornecedor.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))
+        .flatMap(([, ls]) => ls);
+      if (linhas.length === 0) {
         toast.info('Nenhuma linha de follow sem resposta para exportar no filtro atual.');
         return;
       }
-      let totalLinhas = 0;
-      for (const [forn, linhas] of linhasPorFornecedor) {
-        const blob = await gerarArquivoFollowup(linhas);
-        const nome = `Followup_Fornecedor_${new Date().toISOString().slice(0, 10).replace(/-/g, '')} - ${forn.replace(/[\\/]/g, '')}.xlsx`;
-        baixarBlob(blob, nome);
-        totalLinhas += linhas.length;
-      }
-      registraLog('FollowFornecedor - Exportacao', 0, '', `${linhasPorFornecedor.size} fornecedores, ${totalLinhas} linhas (baixa=${baixados}, gerados=${gerados})`);
+      const blob = await gerarArquivoFollowup(linhas);
+      const sufixo = fornecedor ? ` - ${fornecedor.replace(/[\\/]/g, '')}` : '';
+      const nome = `Followup_Fornecedor_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${sufixo}.xlsx`;
+      baixarBlob(blob, nome);
+      registraLog('FollowFornecedor - Exportacao', 0, '', `${linhasPorFornecedor.size} fornecedores, ${linhas.length} linhas (baixa=${baixados}, gerados=${gerados})`);
       toast.success(
-        `${linhasPorFornecedor.size} arquivo(s) gerado(s) — ${totalLinhas} linha(s). Baixa sistema: ${baixados}; gerados: ${gerados}. (senha Plan8)`,
+        `Arquivo gerado — ${linhas.length} linha(s) de ${linhasPorFornecedor.size} fornecedor(es). Baixa sistema: ${baixados}; gerados: ${gerados}. (senha Plan8)`,
         { duration: 9000 },
       );
       qc.invalidateQueries({ queryKey: ['followups'] });

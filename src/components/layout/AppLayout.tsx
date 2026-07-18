@@ -53,7 +53,7 @@ const MENUS: { grupo: string; itens: ItemMenu[] }[] = [
     grupo: 'Comex',
     itens: [
       { para: '/controle-importacao', tela: 'controle_importacao', nome: 'Controle de Importação', icone: Container },
-      { para: '/acompanhamento-importacoes', tela: 'acompanhamento_importacoes', nome: 'Followup Agente de Carga', icone: Ship },
+      { para: '/acompanhamento-importacoes', tela: 'acompanhamento_importacoes', nome: 'Follow-up Agente de Carga', icone: Ship },
       { para: '/lancar-acompanhamento', tela: 'lancar_acompanhamento', nome: 'Lançar no Acompanhamento', icone: Upload },
       { para: '/multiplos-embarques', tela: 'multiplos_embarques', nome: 'Múltiplos Embarques', icone: Boxes },
       { para: '/checks-recebimento', tela: 'checks_recebimento', nome: 'Checks de Recebimento', icone: ListChecks },
@@ -93,7 +93,7 @@ export function AppLayout() {
     <div className="flex h-screen overflow-hidden">
       <aside
         className={cn(
-          'flex shrink-0 flex-col border-r bg-card transition-all duration-200',
+          'flex shrink-0 flex-col border-r bg-blue-700 text-white transition-all duration-200',
           aberta ? 'w-60' : 'w-14',
         )}
       >
@@ -134,7 +134,7 @@ export function AppLayout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-4">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b bg-blue-700 text-white px-4">
           <Button variant="ghost" size="icon" onClick={() => setAberta(!aberta)}>
             {aberta ? <PanelLeftClose /> : <PanelLeftOpen />}
           </Button>

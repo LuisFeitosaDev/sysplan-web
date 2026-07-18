@@ -160,7 +160,7 @@ export default function LancarAcompanhamento() {
       return registros.length;
     },
     onSuccess: (qtd) => {
-      toast.success(`${qtd} registro(s) lançado(s) no Followup Agente de Carga!`);
+      toast.success(`${qtd} registro(s) lançado(s) no Follow-up Agente de Carga!`);
       qc.invalidateQueries({ queryKey: ['acompanhamento_importacoes'] });
       refetch();
     },
@@ -202,7 +202,7 @@ export default function LancarAcompanhamento() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Lançar no Followup Agente de Carga</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Lançar no Follow-up Agente de Carga</h1>
         <p className="text-sm text-muted-foreground">
           Filtre pelo AnoMês do Revised Delivery e lance no Followup Agente de Carga (check chave Material Pai + Pedido SAP)
         </p>
