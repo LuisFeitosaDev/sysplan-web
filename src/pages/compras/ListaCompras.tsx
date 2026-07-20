@@ -1,7 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Download,
   FileSpreadsheet,
   FileText,
   Filter,
@@ -22,7 +21,7 @@ import { PainelFiltros } from '@/components/ui/painel-filtros';
 import { confirmar } from '@/components/ui/confirm';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/misc';
-import { exportarCsv, exportarExcel, exportarPdf, type ColunaExport } from '@/lib/exportar';
+import { exportarExcel, exportarPdf, type ColunaExport } from '@/lib/exportar';
 import { anoMes, formatDateTime, formatNumber, formatPercent, hojeISO } from '@/lib/utils';
 import { miniaturaUrl } from '@/lib/cloudinary';
 import type { CompraLista, ConfigColuna } from '@/types';
@@ -371,6 +370,9 @@ export default function ListaCompras() {
               <Button onClick={() => setCdEdicao(0)}>
                 <Plus /> Novo Registro
               </Button>
+              <Button variant="secondary" onClick={() => setColsModalOpen(true)}>
+                <Layers /> Colunas
+              </Button>
               <Button variant="secondary" onClick={() => setCadastroMassa(true)}>
                 <Layers /> Cadastro em Massa
               </Button>
@@ -379,17 +381,11 @@ export default function ListaCompras() {
           <Button variant="outline" onClick={() => setDialogFiltros(true)}>
             <Filter /> Filtros {filtrosAvancados.length > 0 && <Badge>{filtrosAvancados.length}</Badge>}
           </Button>
-          <Button variant="outline" onClick={() => setColsModalOpen(true)}>
-            <Layers /> Colunas
-          </Button>
           <Button variant="outline" onClick={() => refetch()}>
             <RefreshCw /> Atualizar
           </Button>
           <Button variant="outline" onClick={() => { exportarExcel(colunasExport, dadosExport, 'SysPlan_ListaCompras'); registraLog('ListaCompras - Exportacao Excel'); }}>
             <FileSpreadsheet /> Excel
-          </Button>
-          <Button variant="outline" onClick={() => { exportarCsv(colunasExport, dadosExport, 'SysPlan_ListaCompras'); registraLog('ListaCompras - Exportacao CSV'); }}>
-            <Download /> CSV
           </Button>
           <Button variant="outline" onClick={() => { exportarPdf(colunasExport, dadosExport, 'SysPlan_ListaCompras', 'SysPlan - Lista de Compras'); registraLog('ListaCompras - Exportacao PDF'); }}>
             <FileText /> PDF
