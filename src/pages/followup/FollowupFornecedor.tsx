@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
 import { CheckCheck, FileDown, FileUp, PlayCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase, fetchAll } from '@/lib/supabase';
+import { supabase, fetchAll, fetchPaginasParalelo } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useCombos, useCompradores } from '@/services/combos';
 import { DataTable, type Coluna } from '@/components/DataTable';
@@ -59,20 +59,24 @@ export default function FollowupFornecedor() {
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['followups', status],
+    staleTime: 60_000,
     queryFn: async () => {
       // followup_fornecedor não tem FK para controle_compras (dados legados órfãos),
       // então o join é feito manualmente em duas consultas
-      const seleciona = (inicio: number, fim: number) => {
-        let q = supabase
-          .from('followup_fornecedor')
-          .select('*')
-          .order('cd_follow_forn', { ascending: false });
+      const aplicaStatus = (q: any) => {
         if (status === 'SEM_RESPOSTA') q = q.is('dt_fim_followup', null);
         if (status === 'COM_RESPOSTA') q = q.not('dt_fim_followup', 'is', null);
-        return q.range(inicio, fim);
+        return q;
       };
-      // limita a 5000 follow-ups mais recentes para manter a tela leve
-      let rows = await fetchAll<any>(seleciona, 5000);
+      const seleciona = (inicio: number, fim: number) =>
+        aplicaStatus(supabase.from('followup_fornecedor').select('*'))
+          .order('cd_follow_forn', { ascending: false })
+          .range(inicio, fim);
+      // limita a 5000 follow-ups mais recentes; páginas em paralelo (mais rápido)
+      const { count } = await aplicaStatus(
+        supabase.from('followup_fornecedor').select('cd_follow_forn', { count: 'exact', head: true }),
+      );
+      let rows = await fetchPaginasParalelo<any>(seleciona, Math.min(count ?? 0, 5000));
       if (status === 'COM_RESPOSTA') {
         // mantém apenas o último follow respondido de cada compra
         const vistos = new Set<number>();

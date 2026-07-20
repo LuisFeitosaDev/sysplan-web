@@ -50,8 +50,10 @@ export function EdicaoCompra({
   );
 
   const [recebimentoOriginal, setRecebimentoOriginal] = useState<string | null>(null);
-  // Recebimento já ocorrido (ontem para trás) é imutável fora do Check de Recebimento
-  const recebimentoTravado = !novo && !!recebimentoOriginal && recebimentoOriginal < hojeISO();
+  // Recebimento de MÊS PASSADO é imutável fora do Check de Recebimento
+  // (dentro do mês atual pode alterar normalmente)
+  const inicioMesAtual = hojeISO().slice(0, 7) + '-01';
+  const recebimentoTravado = !novo && !!recebimentoOriginal && recebimentoOriginal < inicioMesAtual;
 
   useEffect(() => {
     if (novo) return;
@@ -157,6 +159,8 @@ export function EdicaoCompra({
     setForm((f) => ({ ...f, [campo]: valor }));
 
   const fobCalc = fobSap && fobSap > 0 ? fobSap : form.nr_fob_negociado ?? 0;
+  // Total FOB é calculado (quantidade × FOB negociado), não é preenchido
+  const totalFob = Math.round((form.nr_quantidade ?? 0) * (form.nr_fob_negociado ?? 0) * 100) / 100;
   const leadTime = calcLeadTime(form.dt_recebimento ?? null, form.dt_revised_delivery ?? null);
   const margem = calcMargem(fobCalc, form.nr_preco_varejo ?? 0, paramCusto ?? null);
   const tamanho = defineTamanhoProduto(form.dc_grupo ?? '', form.dc_medidas ?? '', form.dc_sexo ?? '');
@@ -185,6 +189,7 @@ export function EdicaoCompra({
       ...form,
       nr_margem: margem ?? 0,
       nr_fob_real: fobCalc,
+      nr_total_fob: totalFob,
       dc_tamanho: tamanho,
     };
     delete (payload as any).criado_em;
@@ -258,9 +263,17 @@ export function EdicaoCompra({
     </CampoLinha>
   );
 
+  // números sempre com no máximo 2 casas decimais
+  const arred2 = (v: number) => Math.round(v * 100) / 100;
   const Numero = ({ campo, label }: { campo: keyof Compra; label: string }) => (
     <CampoLinha label={label}>
-      <Input className={CTRL} type="number" step="0.01" value={(form[campo] as number) ?? 0} onChange={(e) => set(campo, Number(e.target.value))} />
+      <Input
+        className={CTRL}
+        type="number"
+        step="0.01"
+        value={(form[campo] as number) ?? 0}
+        onChange={(e) => set(campo, arred2(Number(e.target.value)))}
+      />
     </CampoLinha>
   );
 
@@ -344,21 +357,7 @@ export function EdicaoCompra({
             <Bloco titulo="Valores" cor="violeta">
               {Numero({ campo: 'nr_quantidade', label: 'Quantidade' })}
               {Numero({ campo: 'nr_fob_negociado', label: 'Fob Negociado' })}
-              <CampoLinha label="Total FOB">
-                <Input
-                  className={CTRL} type="number" step="0.01"
-                  value={form.nr_total_fob ?? 0}
-                  onChange={(e) => {
-                    const total = Number(e.target.value);
-                    setForm((f) => ({
-                      ...f,
-                      nr_total_fob: total,
-                      nr_fob_negociado:
-                        total > 0 && (f.nr_quantidade ?? 0) > 0 ? total / (f.nr_quantidade ?? 1) : f.nr_fob_negociado,
-                    }));
-                  }}
-                />
-              </CampoLinha>
+              {Fixo({ label: 'Total FOB', valor: formatNumber(totalFob) })}
               {Fixo({ label: 'Fob SAP', valor: formatNumber(fobCalc) })}
               {Numero({ campo: 'nr_preco_varejo', label: 'Preço Varejo' })}
               {Fixo({ label: 'Margem', valor: formatPercent(margem) })}

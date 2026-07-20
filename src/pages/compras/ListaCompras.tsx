@@ -10,7 +10,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase, fetchAll } from '@/lib/supabase';
+import { supabase, fetchAll, fetchPaginasParalelo } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useCombos, useCompradores } from '@/services/combos';
 import { DataTable, type Coluna } from '@/components/DataTable';
@@ -94,14 +94,27 @@ export default function ListaCompras() {
 
   const { data: compras, isLoading, refetch } = useQuery({
     queryKey: ['compras_lista', fPO, fPI, anoMesInicio],
-    queryFn: async () =>
-      fetchAll<CompraLista>((inicio, fim) => {
-        let q = supabase.from('vw_controle_compras_lista').select('*');
+    staleTime: 60_000,
+    queryFn: async () => {
+      const aplicaFiltros = (q: any) => {
         if (anoMesInicio) q = q.gte('nr_anomes', Number(anoMesInicio));
         if (fPO) q = q.eq('dc_comprador', fPO);
         if (fPI) q = q.eq('dc_comprador_grupo', fPI);
-        return q.order('dt_recebimento', { ascending: true }).order('cd_compra').range(inicio, fim);
-      }),
+        return q;
+      };
+      // conta primeiro e busca as páginas em paralelo (bem mais rápido que sequencial)
+      const { count } = await aplicaFiltros(
+        supabase.from('vw_controle_compras_lista').select('cd_compra', { count: 'exact', head: true }),
+      );
+      return fetchPaginasParalelo<CompraLista>(
+        (inicio, fim) =>
+          aplicaFiltros(supabase.from('vw_controle_compras_lista').select('*'))
+            .order('dt_recebimento', { ascending: true })
+            .order('cd_compra')
+            .range(inicio, fim),
+        count ?? 0,
+      );
+    },
   });
 
   const { data: compradores } = useCompradores();
@@ -195,8 +208,10 @@ export default function ListaCompras() {
     queryKey: ['fotos_produto_mapa'],
     staleTime: 5 * 60_000,
     queryFn: async () => {
-      const linhas = await fetchAll<{ cd_ref_fornecedor: string; url: string }>((i, f) =>
-        supabase.from('fotos_produto').select('cd_ref_fornecedor, url').order('cd_ref_fornecedor').range(i, f),
+      const { count } = await supabase.from('fotos_produto').select('cd_ref_fornecedor', { count: 'exact', head: true });
+      const linhas = await fetchPaginasParalelo<{ cd_ref_fornecedor: string; url: string }>(
+        (i, f) => supabase.from('fotos_produto').select('cd_ref_fornecedor, url').order('cd_ref_fornecedor').range(i, f),
+        count ?? 0,
       );
       return new Map(linhas.map((l) => [l.cd_ref_fornecedor, miniaturaUrl(l.url)]));
     },
@@ -354,7 +369,7 @@ export default function ListaCompras() {
               selecionadas={selecionadas}
               grupos={gruposSelecionados}
               temRecebimentoPassado={(compras ?? []).some(
-                (c) => selecionadas.has(c.cd_compra) && !!c.dt_recebimento && c.dt_recebimento < hojeISO(),
+                (c) => selecionadas.has(c.cd_compra) && !!c.dt_recebimento && c.dt_recebimento < hojeISO().slice(0, 7) + '-01',
               )}
               onLimparSelecao={() => setSelecionadas(new Set())}
               onAplicado={() => {
