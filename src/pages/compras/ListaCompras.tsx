@@ -24,6 +24,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Badge } from '@/components/ui/misc';
 import { exportarCsv, exportarExcel, exportarPdf, type ColunaExport } from '@/lib/exportar';
 import { anoMes, formatDateTime, formatNumber, formatPercent, hojeISO } from '@/lib/utils';
+import { miniaturaUrl } from '@/lib/cloudinary';
 import type { CompraLista, ConfigColuna } from '@/types';
 import { campoParaColuna, renderizador } from './colunas';
 import { CadastroMassa } from './CadastroMassa';
@@ -190,6 +191,18 @@ export default function ListaCompras() {
 
   const opcoesGriffe = useMemo(() => opcoesRapidas('dc_griffe', 'fGriffe'), [baseFiltrada, fMaterialPai, fProcesso, fPedidoSap, fPINum]);
 
+  // Miniaturas: mapa ref fornecedor -> URL da foto (Cloudinary), carregado uma vez
+  const { data: mapaFotos } = useQuery({
+    queryKey: ['fotos_produto_mapa'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const linhas = await fetchAll<{ cd_ref_fornecedor: string; url: string }>((i, f) =>
+        supabase.from('fotos_produto').select('cd_ref_fornecedor, url').order('cd_ref_fornecedor').range(i, f),
+      );
+      return new Map(linhas.map((l) => [l.cd_ref_fornecedor, miniaturaUrl(l.url)]));
+    },
+  });
+
   const colunas: Coluna<CompraLista>[] = useMemo(() => {
     // determine base keys from config (default visible) and load saved visible columns
     const baseKeys = (configCols ?? []).map((c) => campoParaColuna(c.campo));
@@ -207,6 +220,19 @@ export default function ListaCompras() {
     // (that were not marked exibir) can still be rendered with proper label and renderer.
     const allCols = (configColsAll ?? configCols ?? []);
 
+    const colFoto: Coluna<CompraLista> = {
+      key: '__foto',
+      titulo: 'Foto',
+      ordenavel: false,
+      render: (row) => {
+        const url = row.cd_material_fornecedor ? mapaFotos?.get(row.cd_material_fornecedor) : null;
+        return url ? (
+          <img src={url} alt="" loading="lazy" className="h-10 w-14 rounded border object-contain" />
+        ) : (
+          <div className="h-10 w-14 rounded border border-dashed opacity-30" />
+        );
+      },
+    };
     const colUltAlteracao: Coluna<CompraLista> = {
       key: 'ult_alteracao_em',
       titulo: 'Últ. Alteração',
@@ -253,8 +279,8 @@ export default function ListaCompras() {
     if (visibleCols) visibleSet = new Set(visibleCols);
     const filteredBase = visibleSet ? meio.filter((c) => visibleSet!.has(c.key)) : meio;
 
-    return [...filteredBase, colUltAlteracao, colUltMudanca];
-  }, [configCols, configColsAll, visibleCols]);
+    return [colFoto, ...filteredBase, colUltAlteracao, colUltMudanca];
+  }, [configCols, configColsAll, mapaFotos, visibleCols]);
 
   const resumo = useMemo(() => {
     const qtde = filtrados.reduce((s, r) => s + (r.nr_quantidade ?? 0), 0);
@@ -563,6 +589,19 @@ export default function ListaCompras() {
           <div className="space-y-2 py-2">
             <div className="text-sm text-muted-foreground">Toggle as colunas que deseja ver na lista. Salvo no navegador por usuário.</div>
             <div className="space-y-1 pt-2">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={visibleCols ? visibleCols.includes('__foto') : true}
+                  onChange={(e) => {
+                    const key = '__foto';
+                    const cur = visibleCols ?? [];
+                    const next = e.target.checked ? [...cur, key] : cur.filter((k) => k !== key);
+                    setVisibleCols(next);
+                  }}
+                />
+                <span>Foto</span>
+              </label>
               {(configColsAll ?? []).map((c) => {
                 const key = campoParaColuna(c.campo);
                 return (
