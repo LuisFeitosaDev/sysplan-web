@@ -13,7 +13,7 @@ segura e multiusuário.
 
 ---
 
-## 📌 O que é
+## 📌 O que é o site 
 
 O **SysPlan** controla toda a carteira de compras da Chilli Beans — do pedido ao
 fornecedor até a chegada da mercadoria no CD — passando por follow-up com
